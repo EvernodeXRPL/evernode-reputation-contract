@@ -1,0 +1,23 @@
+{
+  "name": "reputation-contract",
+  "version": "1.0.0",
+  "description": "Reputation contract for host reputation scoring",
+  "main": "src/contract.js",
+  "scripts": {
+    "build": "npx ncc build src/contract.js -o dist"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EvernodeXRPL/evernode-reputation-contract.git"
+  },
+  "author": "",
+  "license": "SEE LICENSE IN https://raw.githubusercontent.com/EvernodeXRPL/evernode-resources/main/license/evernode-license.pdf",
+  "bugs": {
+    "url": "https://github.com/EvernodeXRPL/evernode-reputation-contract/issues"
+  },
+  "homepage": "https://github.com/EvernodeXRPL/evernode-reputation-contract#readme",
+  "dependencies": {
+    "hotpocket-nodejs-contract": "0.7.4",
+    "@vercel/ncc": "0.34.0"
+  }
+}

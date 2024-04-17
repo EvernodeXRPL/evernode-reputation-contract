@@ -60,8 +60,8 @@ const myContract = async (ctx) => {
                 const req = JSON.parse(message);
 
                 if (req.command === 'read_scores') {
-                    const output = fs.existsSync(opfile) ? JSON.parse(fs.readFileSync(opfile)) : null;
-                    user.send(JSON.stringify({ message: output }));
+                    const output = fs.existsSync(opfile) ? JSON.parse(fs.readFileSync(opfile).toString()) : null;
+                    user.send({ message: output });
                 }
             }
         }

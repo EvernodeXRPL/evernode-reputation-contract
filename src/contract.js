@@ -76,6 +76,22 @@ async function countsevens(lgrhex, pubkeyhex, uptohex) {
 
 const myContract = async (ctx) => {
     if (ctx.readonly) {
+        for (const user of ctx.users.list()) {
+            console.log("User public key", user.publicKey);
+
+            // Loop through inputs sent by each user.
+            for (const input of user.inputs) {
+                const buffer = await ctx.users.read(input);
+
+                const message = buffer.toString();
+                const req = JSON.parse(message);
+
+                if (req.command === 'read_scores') {
+                    const output = fs.existsSync(opfile) ? JSON.parse(fs.readFileSync(opfile).toString()) : null;
+                    user.send({ message: output });
+                }
+            }
+        }
 
         return;
     }

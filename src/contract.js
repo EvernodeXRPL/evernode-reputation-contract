@@ -74,6 +74,7 @@ async function countsevens(lgrhex, pubkeyhex, uptohex) {
     return sha.length;
 }
 
+// Contract logic.
 const myContract = async (ctx) => {
     if (ctx.readonly) {
         for (const user of ctx.users.list()) {

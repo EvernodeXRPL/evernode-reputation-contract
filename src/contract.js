@@ -128,4 +128,4 @@ const myContract = async (ctx) => {
 };
 
 const hpc = new HotPocket.Contract();
-hpc.init(myContract, undefined, true);
+hpc.init(myContract, null, true);

@@ -36,17 +36,11 @@ async function pow(lgrhex, pubkeyhex, sevens) {
         const endTime = performance.now();
 
         const timeTaken = endTime - startTime;
-        console.log("time taken:", timeTaken);
 
         let i = 0;
         for (; i < sevens && i < sha.length; ++i) {
             if (sha.charCodeAt(i) == 55) {
                 if (i >= sevens - 1) {
-                    const t1 = performance.now();
-                    console.log(`\n\n POW completed.`);
-                    console.log("POW lgrhex:", lgrhex)
-                    console.log("POW pubkeyhex:", pubkeyhex)
-                    console.log(`Time taken to find reqsevens: ${t1 - t0} milliseconds`);
                     return uptohex;
                 }
             }
@@ -59,15 +53,10 @@ async function pow(lgrhex, pubkeyhex, sevens) {
 }
 
 async function countsevens(lgrhex, pubkeyhex, uptohex) {
-    console.log(`\n\n C7 completed.`);
-    console.log("c7 lgrhex:", lgrhex)
-    console.log("c7 pubkeyhex:", pubkeyhex)
-
     let sha = generateHash(lgrhex, pubkeyhex, uptohex);
 
     for (let i = 0; i < sha.length; ++i) {
         if (sha.charCodeAt(i) != 55) {
-            console.log("\nc7 i:", i);
             return i + 1;
         }
     }

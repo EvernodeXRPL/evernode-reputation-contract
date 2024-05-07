@@ -29,13 +29,7 @@ async function pow(lgrhex, pubkeyhex, sevens) {
         if (uptohex.length < 16)
             uptohex = '0'.repeat(16 - uptohex.length) + uptohex;
 
-        const startTime = performance.now();
-
         let sha = generateHash(lgrhex, pubkeyhex, uptohex);
-
-        const endTime = performance.now();
-
-        const timeTaken = endTime - startTime;
 
         let i = 0;
         for (; i < sevens && i < sha.length; ++i) {

@@ -1,68 +1,172 @@
 const HotPocket = require('hotpocket-nodejs-contract');
 const sodium = require('libsodium-wrappers-sumo');
 const fs = require('fs');
-const reqsevens = 1;
+const crypto = require('node:crypto');
 
-const tsfile = "timestamps.txt";
 const opfile = "../opinion.txt";
-const memLimit = 100 * 1024 * 1024; //For testing with lower resource consumption. Recommended value: 682 * 1024 * 1024;
 
-function generateHash(lgrhex, pubkeyhex, uptohex) {
-    const buf = Buffer.from(lgrhex + pubkeyhex + uptohex, "hex").toString("hex");
-    const salt = Uint8Array.from(uptohex + lgrhex).slice(0, sodium.crypto_pwhash_SALTBYTES);
+const FILE_PATH = '../rep_hash.dat';
+const TOTAL_FILE_SIZE = 1.5 * 1024 * 1024 * 1024;//25 * 1024 * 1024 * 1024 ;
+const WRITE_INTERVAL = 1 * 512 * 1024; //10 * 1024 * 1024;
+const CHUNK_SIZE = 1024 * 1024; // 1024 * 1024;
 
-    return sodium.crypto_pwhash(
+const NUM_HASHES = TOTAL_FILE_SIZE / WRITE_INTERVAL;
+
+const SODIUM_FREQUENCY = 200;
+const PWHASH_MEM_LIMIT = 300 * 1024 * 1024; //For testing with lower resource consumption. Recommended value: 682 * 1024 * 1024;
+
+const OPINION_WRITE_WAIT = 5000;
+
+function getShaHash(input) {
+    let buf = Buffer.from(input, "hex");
+    return crypto.createHash('sha512').update(buf).digest('hex');
+}
+
+function getSodiumHash(input) {
+    const buf = Buffer.from(input, "hex").toString("hex");
+    const salt = Uint8Array.from(input).slice(0, sodium.crypto_pwhash_SALTBYTES);
+    const hashedOutput = sodium.crypto_pwhash(
         sodium.crypto_pwhash_STRBYTES >>> 0,
         buf,
         salt,
         sodium.crypto_pwhash_OPSLIMIT_MIN >>> 0,
-        memLimit,
+        PWHASH_MEM_LIMIT,
         sodium.crypto_pwhash_ALG_DEFAULT
-    ).toString('hex');
+    );
+    return Buffer.from(hashedOutput).toString("hex");
 }
 
-async function pow(lgrhex, pubkeyhex, sevens) {
-    const t0 = performance.now();
-    for (let upto = 0n; upto < 0xFFFFFFFFFFFFFFFFn; upto++) {
+function initializeFile(filePath, sizeInBytes) {
 
-        let uptohex = upto.toString(16);
-        if (uptohex.length < 16)
-            uptohex = '0'.repeat(16 - uptohex.length) + uptohex;
+    if (fs.existsSync(filePath)) {
+        const stats = fs.statSync(filePath);
+        if (stats.size === sizeInBytes) {
+            console.log("File exists with correct size. Skipping initialization.");
+            return;
+        } else {
+            fs.unlinkSync(filePath);
+        }
+    }
 
-        let sha = generateHash(lgrhex, pubkeyhex, uptohex);
+    const writeStream = fs.createWriteStream(filePath);
+    const zeroBuffer = Buffer.alloc(CHUNK_SIZE, '0');
 
-        let i = 0;
-        for (; i < sevens && i < sha.length; ++i) {
-            if (sha.charCodeAt(i) == 55) {
-                if (i >= sevens - 1) {
-                    return uptohex;
-                }
+    return new Promise((resolve, reject) => {
+        writeStream.on("error", reject);
+        writeStream.on("finish", resolve);
+
+        let bytesWritten = 0;
+
+        function writeChunk() {
+            if (bytesWritten >= sizeInBytes) {
+                writeStream.end();
+                return;
             }
-            else break;
-        }
-    }
 
-    // this failure case will never happen but cover it anyway
-    return '0'.repeat(16);
+            const bytesToWrite = Math.min(CHUNK_SIZE, sizeInBytes - bytesWritten);
+
+            const success = writeStream.write(Uint8Array.from(zeroBuffer).slice(0, bytesToWrite));
+
+            bytesWritten += bytesToWrite;
+
+            if (success) {
+                setImmediate(writeChunk);
+            } else {
+                writeStream.once("drain", writeChunk);
+            }
+        }
+
+        writeChunk();
+    });
 }
 
-async function countsevens(lgrhex, pubkeyhex, uptohex) {
-    let sha = generateHash(lgrhex, pubkeyhex, uptohex);
+function getHashOfFile(filePath) {
+    return new Promise((resolve, reject) => {
+        try {
+            const fileStream = fs.createReadStream(filePath);
+            const hash = crypto.createHash('sha512');
 
-    for (let i = 0; i < sha.length; ++i) {
-        if (sha.charCodeAt(i) != 55) {
-            return i + 1;
+            fileStream.on('data', (chunk) => {
+                hash.update(chunk); hash
+            });
+
+            fileStream.on('end', () => {
+                const hashValue = hash.digest('hex');
+                resolve(hashValue);
+            });
+
+            fileStream.on('error', (err) => {
+                reject(err);
+            });
+        } catch (error) {
+            reject(error);
         }
-    }
-    return sha.length;
+    });
 }
 
-// Contract logic.
+function getPubKeyCodedHash(pubkeyhex, fileHash) {
+    return getSodiumHash(pubkeyhex + fileHash);
+
+}
+
+async function pow(lgrhex, pubkeyhex) {
+    try {
+        let fileInitialized = false;
+        while (!fileInitialized) {
+            try {
+                await initializeFile(FILE_PATH, TOTAL_FILE_SIZE);
+                fileInitialized = true;
+                console.log("File initialized completed.");
+            } catch (error) {
+                console.error("Error initializing file:", error);
+            }
+        }
+        let hashInput = lgrhex;
+        for (let i = 0; i < NUM_HASHES; i++) {
+
+            const startPosition = TOTAL_FILE_SIZE - (i + 1) * WRITE_INTERVAL;
+
+            if (startPosition < 0) {
+                break;
+            }
+
+            if (i % SODIUM_FREQUENCY == 0) {
+                const hash = getSodiumHash(hashInput);
+                hashInput = hash;
+
+                console.log('Hash file percentage:', (startPosition / TOTAL_FILE_SIZE * 100).toFixed(2), '%');
+            } else {
+                const hash = getShaHash(hashInput);
+                hashInput = hash;
+            }
+
+            const writeStream = fs.createWriteStream(FILE_PATH, {
+                flags: 'r+',
+                start: startPosition,
+            });
+
+            writeStream.write(hashInput);
+            writeStream.end();
+
+            await new Promise((resolve, reject) => {
+                writeStream.on('finish', resolve);
+                writeStream.on('error', reject);
+            });
+
+        }
+
+        const fileHash = await getHashOfFile(FILE_PATH);
+        const pubKeyCodedHash = getPubKeyCodedHash(pubkeyhex, fileHash);
+        return [fileHash, pubKeyCodedHash];
+    } catch (error) {
+        console.error("An error occurred:", error);
+    }
+}
+
 const myContract = async (ctx) => {
     if (ctx.readonly) {
         for (const user of ctx.users.list()) {
             console.log("User public key", user.publicKey);
-
             // Loop through inputs sent by each user.
             for (const input of user.inputs) {
                 const buffer = await ctx.users.read(input);
@@ -76,35 +180,55 @@ const myContract = async (ctx) => {
                 }
             }
         }
-
         return;
     }
-
-    fs.appendFileSync(tsfile, ctx.timestamp + "\n");
 
     await sodium.ready;
 
     let good = {};
 
+    let [fileHash, pubKeyCodedHash] = [null, null];
+
+    let storedMessages = [];
+
     ctx.unl.onMessage(async (node, msg) => {
-        let sev = await countsevens(ctx.lclHash, node.publicKey, msg);
-        if (sev >= reqsevens)
-            good[node.publicKey] = 1;
+        if (!fileHash) {
+            storedMessages.push({ node, msg });
+            console.log(`Message from ${node.publicKey} stored.`);
+            return;
+        } else {
+            const pubKeyCodedHash = getPubKeyCodedHash(node.publicKey, fileHash);
+            console.log(`Message received from ${node.publicKey}`)
+            if (pubKeyCodedHash == msg) {
+                good[node.publicKey] = 1;
+            }
+        }
     });
 
-    await ctx.unl.send(await pow(ctx.lclHash, ctx.publicKey, reqsevens));
+    [fileHash, pubKeyCodedHash] = await pow(ctx.lclHash, ctx.publicKey);
+    console.log(`\nfileHash generation complete:${fileHash}`);
 
+    console.log(`\nProcessing previously received messages (${storedMessages.length}) `);
+    for (const { node, msg } of storedMessages) {
+        const pubKeyCodedHash = getPubKeyCodedHash(node.publicKey, fileHash);
 
-    // wait 3 seconds
+        if (pubKeyCodedHash == msg) {
+            good[node.publicKey] = 1;
+        }
+    }
+
+    console.log(`\nSending pubKeyCodedHash.`)
+    await ctx.unl.send(pubKeyCodedHash);
+    console.log(`\npubKeyCodedHash sent.`)
+
     await new Promise((resolve) => {
         setTimeout(() => {
-            // write out our opinions
-
             try {
                 if (!fs.existsSync(opfile)) {
                     console.log("\nCreating optfile:");
                     console.log(JSON.stringify(good) + "\n");
                     fs.appendFileSync(opfile, JSON.stringify(good));
+                    console.log("\nOptfile created successfully.");
                     return resolve();
                 }
 
@@ -118,12 +242,13 @@ const myContract = async (ctx) => {
                 console.log("\nUpdating optfile:");
                 console.log(JSON.stringify(ops) + "\n");
                 fs.writeFileSync(opfile, JSON.stringify(ops));
+                console.log("\nOptfile updated successfully.");
                 return resolve();
             } catch (e) {
                 console.error(e);
                 resolve();
             }
-        }, 3000);
+        }, OPINION_WRITE_WAIT);
     });
 };
 

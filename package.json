@@ -4,7 +4,8 @@
   "description": "Reputation contract for host reputation scoring",
   "main": "src/contract.js",
   "scripts": {
-    "build": "npx ncc build src/contract.js -o dist"
+    "build": "npx ncc build src/contract.js -o dist",
+    "start": "npm run build && hpdevkit deploy dist"
   },
   "repository": {
     "type": "git",
@@ -18,7 +19,6 @@
   "homepage": "https://github.com/EvernodeXRPL/evernode-reputation-contract#readme",
   "dependencies": {
     "@vercel/ncc": "0.34.0",
-    "crypto": "1.0.1",
     "hotpocket-nodejs-contract": "0.7.4",
     "libsodium-wrappers-sumo": "0.7.13"
   }

@@ -15,7 +15,7 @@ const NUM_HASHES = TOTAL_FILE_SIZE / WRITE_INTERVAL;
 const SODIUM_FREQUENCY = 200;
 const PWHASH_MEM_LIMIT = 300 * 1024 * 1024; //For testing with lower resource consumption. Recommended value: 682 * 1024 * 1024;
 
-const OPINION_WRITE_WAIT = 5000;
+const OPINION_WRITE_WAIT = 90000;
 
 function getShaHash(input) {
     let buf = Buffer.from(input, "hex");
@@ -164,6 +164,8 @@ async function pow(lgrhex, pubkeyhex) {
 }
 
 const myContract = async (ctx) => {
+    const startTime = Date.now();
+
     if (ctx.readonly) {
         for (const user of ctx.users.list()) {
             console.log("User public key", user.publicKey);
@@ -221,6 +223,8 @@ const myContract = async (ctx) => {
     await ctx.unl.send(pubKeyCodedHash);
     console.log(`\npubKeyCodedHash sent.`)
 
+    const endTime = Date.now();
+
     await new Promise((resolve) => {
         setTimeout(() => {
             try {
@@ -248,7 +252,7 @@ const myContract = async (ctx) => {
                 console.error(e);
                 resolve();
             }
-        }, OPINION_WRITE_WAIT);
+        }, (OPINION_WRITE_WAIT - (endTime - startTime)));
     });
 };
 

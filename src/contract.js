@@ -1,12 +1,12 @@
 const HotPocket = require('hotpocket-nodejs-contract');
 const sodium = require('libsodium-wrappers-sumo');
-const crypto = require('crypto');
 const fs = require('fs');
+const crypto = require('node:crypto');
 
 const opfile = "../opinion.txt";
 
 const FILE_PATH = '../rep_hash.dat';
-const TOTAL_FILE_SIZE = 1 * 512 * 1024 * 1024;//25 * 1024 * 1024 * 1024 ;
+const TOTAL_FILE_SIZE = 1.5 * 1024 * 1024 * 1024;//25 * 1024 * 1024 * 1024 ;
 const WRITE_INTERVAL = 1 * 512 * 1024; //10 * 1024 * 1024;
 const CHUNK_SIZE = 1024 * 1024; // 1024 * 1024;
 
@@ -15,6 +15,7 @@ const NUM_HASHES = TOTAL_FILE_SIZE / WRITE_INTERVAL;
 const SODIUM_FREQUENCY = 200;
 const PWHASH_MEM_LIMIT = 300 * 1024 * 1024; //For testing with lower resource consumption. Recommended value: 682 * 1024 * 1024;
 
+const OPINION_WRITE_WAIT = 5000;
 
 function getShaHash(input) {
     let buf = Buffer.from(input, "hex");
@@ -227,6 +228,7 @@ const myContract = async (ctx) => {
                     console.log("\nCreating optfile:");
                     console.log(JSON.stringify(good) + "\n");
                     fs.appendFileSync(opfile, JSON.stringify(good));
+                    console.log("\nOptfile created successfully.");
                     return resolve();
                 }
 
@@ -240,12 +242,13 @@ const myContract = async (ctx) => {
                 console.log("\nUpdating optfile:");
                 console.log(JSON.stringify(ops) + "\n");
                 fs.writeFileSync(opfile, JSON.stringify(ops));
+                console.log("\nOptfile updated successfully.");
                 return resolve();
             } catch (e) {
                 console.error(e);
                 resolve();
             }
-        }, 5000);
+        }, OPINION_WRITE_WAIT);
     });
 };
 

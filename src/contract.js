@@ -133,8 +133,6 @@ async function pow(lgrhex, pubkeyhex) {
             if (i % SODIUM_FREQUENCY == 0) {
                 const hash = getSodiumHash(hashInput);
                 hashInput = hash;
-
-                console.log('Hash file percentage:', (startPosition / TOTAL_FILE_SIZE * 100).toFixed(2), '%');
             } else {
                 const hash = getShaHash(hashInput);
                 hashInput = hash;
@@ -168,7 +166,6 @@ const myContract = async (ctx) => {
 
     if (ctx.readonly) {
         for (const user of ctx.users.list()) {
-            console.log("User public key", user.publicKey);
             // Loop through inputs sent by each user.
             for (const input of user.inputs) {
                 const buffer = await ctx.users.read(input);
@@ -196,11 +193,9 @@ const myContract = async (ctx) => {
     ctx.unl.onMessage(async (node, msg) => {
         if (!fileHash) {
             storedMessages.push({ node, msg });
-            console.log(`Message from ${node.publicKey} stored.`);
             return;
         } else {
             const pubKeyCodedHash = getPubKeyCodedHash(node.publicKey, fileHash);
-            console.log(`Message received from ${node.publicKey}`)
             if (pubKeyCodedHash == msg) {
                 good[node.publicKey] = 1;
             }
@@ -208,9 +203,7 @@ const myContract = async (ctx) => {
     });
 
     [fileHash, pubKeyCodedHash] = await pow(ctx.lclHash, ctx.publicKey);
-    console.log(`\nfileHash generation complete:${fileHash}`);
 
-    console.log(`\nProcessing previously received messages (${storedMessages.length}) `);
     for (const { node, msg } of storedMessages) {
         const pubKeyCodedHash = getPubKeyCodedHash(node.publicKey, fileHash);
 
@@ -219,9 +212,7 @@ const myContract = async (ctx) => {
         }
     }
 
-    console.log(`\nSending pubKeyCodedHash.`)
     await ctx.unl.send(pubKeyCodedHash);
-    console.log(`\npubKeyCodedHash sent.`)
 
     const endTime = Date.now();
 

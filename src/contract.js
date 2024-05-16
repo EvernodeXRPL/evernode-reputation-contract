@@ -6,16 +6,16 @@ const crypto = require('node:crypto');
 const opfile = "../opinion.txt";
 
 const FILE_PATH = '../rep_hash.dat';
-const TOTAL_FILE_SIZE = 1.5 * 1024 * 1024 * 1024;//25 * 1024 * 1024 * 1024 ;
-const WRITE_INTERVAL = 1 * 512 * 1024; //10 * 1024 * 1024;
-const CHUNK_SIZE = 1024 * 1024; // 1024 * 1024;
+const TOTAL_FILE_SIZE = 1.5 * 1024 * 1024 * 1024;
+const WRITE_INTERVAL = 1 * 512 * 1024; 
+const CHUNK_SIZE = 1024 * 1024;
 
 const NUM_HASHES = TOTAL_FILE_SIZE / WRITE_INTERVAL;
 
 const SODIUM_FREQUENCY = 200;
-const PWHASH_MEM_LIMIT = 300 * 1024 * 1024; //For testing with lower resource consumption. Recommended value: 682 * 1024 * 1024;
+const PWHASH_MEM_LIMIT = 300 * 1024 * 1024;
 
-const OPINION_WRITE_WAIT = 5000;
+const OPINION_WRITE_WAIT = 90000;
 
 function getShaHash(input) {
     let buf = Buffer.from(input, "hex");
@@ -116,7 +116,7 @@ async function pow(lgrhex, pubkeyhex) {
             try {
                 await initializeFile(FILE_PATH, TOTAL_FILE_SIZE);
                 fileInitialized = true;
-                console.log("File initialized completed.");
+                console.log("File initialization completed.");
             } catch (error) {
                 console.error("Error initializing file:", error);
             }
@@ -133,8 +133,7 @@ async function pow(lgrhex, pubkeyhex) {
             if (i % SODIUM_FREQUENCY == 0) {
                 const hash = getSodiumHash(hashInput);
                 hashInput = hash;
-
-                console.log('Hash file percentage:', (startPosition / TOTAL_FILE_SIZE * 100).toFixed(2), '%');
+                console.log('Hash file percentage:', (100 - startPosition / TOTAL_FILE_SIZE * 100).toFixed(2), '%');
             } else {
                 const hash = getShaHash(hashInput);
                 hashInput = hash;
@@ -164,9 +163,10 @@ async function pow(lgrhex, pubkeyhex) {
 }
 
 const myContract = async (ctx) => {
+    const startTime = Date.now();
+
     if (ctx.readonly) {
         for (const user of ctx.users.list()) {
-            console.log("User public key", user.publicKey);
             // Loop through inputs sent by each user.
             for (const input of user.inputs) {
                 const buffer = await ctx.users.read(input);
@@ -194,11 +194,9 @@ const myContract = async (ctx) => {
     ctx.unl.onMessage(async (node, msg) => {
         if (!fileHash) {
             storedMessages.push({ node, msg });
-            console.log(`Message from ${node.publicKey} stored.`);
             return;
         } else {
             const pubKeyCodedHash = getPubKeyCodedHash(node.publicKey, fileHash);
-            console.log(`Message received from ${node.publicKey}`)
             if (pubKeyCodedHash == msg) {
                 good[node.publicKey] = 1;
             }
@@ -206,9 +204,7 @@ const myContract = async (ctx) => {
     });
 
     [fileHash, pubKeyCodedHash] = await pow(ctx.lclHash, ctx.publicKey);
-    console.log(`\nfileHash generation complete:${fileHash}`);
 
-    console.log(`\nProcessing previously received messages (${storedMessages.length}) `);
     for (const { node, msg } of storedMessages) {
         const pubKeyCodedHash = getPubKeyCodedHash(node.publicKey, fileHash);
 
@@ -217,9 +213,9 @@ const myContract = async (ctx) => {
         }
     }
 
-    console.log(`\nSending pubKeyCodedHash.`)
     await ctx.unl.send(pubKeyCodedHash);
-    console.log(`\npubKeyCodedHash sent.`)
+
+    const endTime = Date.now();
 
     await new Promise((resolve) => {
         setTimeout(() => {
@@ -248,7 +244,7 @@ const myContract = async (ctx) => {
                 console.error(e);
                 resolve();
             }
-        }, OPINION_WRITE_WAIT);
+        }, (OPINION_WRITE_WAIT - (endTime - startTime)));
     });
 };
 

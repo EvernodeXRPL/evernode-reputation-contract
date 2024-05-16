@@ -6,14 +6,14 @@ const crypto = require('node:crypto');
 const opfile = "../opinion.txt";
 
 const FILE_PATH = '../rep_hash.dat';
-const TOTAL_FILE_SIZE = 1.5 * 1024 * 1024 * 1024;//25 * 1024 * 1024 * 1024 ;
-const WRITE_INTERVAL = 1 * 512 * 1024; //10 * 1024 * 1024;
-const CHUNK_SIZE = 1024 * 1024; // 1024 * 1024;
+const TOTAL_FILE_SIZE = 1.5 * 1024 * 1024 * 1024;
+const WRITE_INTERVAL = 1 * 512 * 1024; 
+const CHUNK_SIZE = 1024 * 1024;
 
 const NUM_HASHES = TOTAL_FILE_SIZE / WRITE_INTERVAL;
 
 const SODIUM_FREQUENCY = 200;
-const PWHASH_MEM_LIMIT = 300 * 1024 * 1024; //For testing with lower resource consumption. Recommended value: 682 * 1024 * 1024;
+const PWHASH_MEM_LIMIT = 300 * 1024 * 1024;
 
 const OPINION_WRITE_WAIT = 90000;
 
@@ -116,7 +116,7 @@ async function pow(lgrhex, pubkeyhex) {
             try {
                 await initializeFile(FILE_PATH, TOTAL_FILE_SIZE);
                 fileInitialized = true;
-                console.log("File initialized completed.");
+                console.log("File initialization completed.");
             } catch (error) {
                 console.error("Error initializing file:", error);
             }
@@ -133,6 +133,7 @@ async function pow(lgrhex, pubkeyhex) {
             if (i % SODIUM_FREQUENCY == 0) {
                 const hash = getSodiumHash(hashInput);
                 hashInput = hash;
+                console.log('Hash file percentage:', (100 - startPosition / TOTAL_FILE_SIZE * 100).toFixed(2), '%');
             } else {
                 const hash = getShaHash(hashInput);
                 hashInput = hash;

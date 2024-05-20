@@ -11,7 +11,7 @@ function writeHpCfg(cfg) {
     fs.writeFileSync('/contract/cfg/hp.cfg', JSON.stringify(cfg, null, 2));
 }
 
-async function updateHpContract(unl, peers) {
+function updateHpContract(unl, peers) {
     if (fs.existsSync('/deploy')) {
         const out = execSync(`
                 rm -rf /contract/contract_fs/seed/state/bootstrap_contract &&
@@ -104,14 +104,14 @@ function lobby(handleData, handleError) {
     });
 }
 
-async function main() {
+function main() {
     lobby(async (data, ack, terminate) => {
         console.log('Received command :', data.type ?? 'unknown');
         switch (data.type) {
             case 'upgrade':
                 try {
                     console.log('Upgrading the contract...');
-                    await updateHpContract(data.data.unl, data.data.peers);
+                    updateHpContract(data.data.unl, data.data.peers);
                     ack({
                         type: 'upgrade',
                         status: 'SUCCESS'
@@ -139,4 +139,4 @@ async function main() {
     });
 }
 
-main().catch(console.error);
+main();

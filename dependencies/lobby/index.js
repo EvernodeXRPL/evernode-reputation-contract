@@ -1,4 +1,4 @@
-import { execSync, spawn } from 'child_process';
+import { execSync } from 'child_process';
 const https = require('https');
 const fs = require('fs');
 const WebSocket = require('ws');
@@ -104,65 +104,39 @@ function lobby(handleData, handleError) {
     });
 }
 
-function startHpCore() {
-    console.log('Starting hpcore...');
-    const child = spawn('/usr/local/bin/hotpocket/hpcore', process.argv.slice(2), {
-        cwd: process.cwd(),
-        env: process.env,
-        detached: true
-    });
-    child.stdout.pipe(process.stdout);
-    child.stderr.pipe(process.stderr);
-
-    child.on('exit', (code, signal) => {
-        console.log(`Child process exited with code ${code} and signal ${signal}`);
-        console.log('Parent process exiting');
-        process.exit(code); // Exit the parent process
-    });
-
-    process.on('SIGINT', function () {
-        child.kill();
-    });
-}
-
 async function main() {
-    if (fs.existsSync('/init.flag')) {
-        startHpCore();
-    }
-    else if (fs.existsSync('/deploy')) {
-        lobby(async (data, ack, terminate) => {
-            console.log('Received command :', data.type ?? 'unknown');
-            switch (data.type) {
-                case 'upgrade':
-                    try {
-                        console.log('Upgrading the contract...');
-                        await updateHpContract(data.data.unl, data.data.peers);
-                        ack({
-                            type: 'upgrade',
-                            status: 'SUCCESS'
-                        });
+    lobby(async (data, ack, terminate) => {
+        console.log('Received command :', data.type ?? 'unknown');
+        switch (data.type) {
+            case 'upgrade':
+                try {
+                    console.log('Upgrading the contract...');
+                    await updateHpContract(data.data.unl, data.data.peers);
+                    ack({
+                        type: 'upgrade',
+                        status: 'SUCCESS'
+                    });
 
-                        console.log('Terminating the connection...');
-                        terminate();
-                        process.exit(0);
-                    }
-                    catch (e) {
-                        console.error(e);
-                        ack({
-                            type: 'upgrade',
-                            status: 'ERROR',
-                            data: e
-                        });
-                    }
-                    break;
-                default:
-                    break;
-            }
-        }, (err) => {
-            console.error(err);
-            process.exit(1);
-        })
-    }
+                    console.log('Terminating the connection...');
+                    terminate();
+                    process.exit(0);
+                }
+                catch (e) {
+                    console.error(e);
+                    ack({
+                        type: 'upgrade',
+                        status: 'ERROR',
+                        data: e
+                    });
+                }
+                break;
+            default:
+                break;
+        }
+    }, (err) => {
+        console.error(err);
+        process.exit(1);
+    });
 }
 
 main().catch(console.error);

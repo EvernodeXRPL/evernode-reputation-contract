@@ -5,7 +5,8 @@
   "main": "src/contract.js",
   "scripts": {
     "build": "npx ncc build src/contract.js -o dist",
-    "bundle": "npm run --prefix ./dependencies/lobby build && npm run build"
+    "bundle": "npm run --prefix ./dependencies/lobby build && npm run build",
+    "start": "npm run build && hpdevkit deploy dist"
   },
   "repository": {
     "type": "git",
@@ -19,7 +20,7 @@
   "homepage": "https://github.com/EvernodeXRPL/evernode-reputation-contract#readme",
   "dependencies": {
     "@vercel/ncc": "0.34.0",
-    "crypto": "1.0.1",
-    "hotpocket-nodejs-contract": "0.7.4"
+    "hotpocket-nodejs-contract": "0.7.4",
+    "libsodium-wrappers-sumo": "0.7.13"
   }
 }

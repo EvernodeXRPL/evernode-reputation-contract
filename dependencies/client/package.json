@@ -1,0 +1,12 @@
+{
+  "name": "client",
+  "version": "1.0.0",
+  "description": "Lobby client",
+  "main": "index.js",
+  "author": "",
+  "license": "SEE LICENSE IN https://raw.githubusercontent.com/EvernodeXRPL/evernode-resources/main/license/evernode-license.pdf",
+  "dependencies": {
+    "https": "^1.0.0",
+    "ws": "^8.17.0"
+  }
+}

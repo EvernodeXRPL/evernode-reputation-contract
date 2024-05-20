@@ -4,7 +4,8 @@
   "description": "Reputation contract for host reputation scoring",
   "main": "src/contract.js",
   "scripts": {
-    "build": "npx ncc build src/contract.js -o dist"
+    "build": "npx ncc build src/contract.js -o dist",
+    "bundle": "npm run --prefix ./dependencies/lobby build && npm run build"
   },
   "repository": {
     "type": "git",

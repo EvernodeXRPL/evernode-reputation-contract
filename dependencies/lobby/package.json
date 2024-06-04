@@ -1,0 +1,15 @@
+{
+  "name": "lobby",
+  "version": "1.0.0",
+  "description": "Lobby for reputation contract",
+  "main": "index.js",
+  "scripts": {
+    "build": "npx ncc build index.js -o dist"
+  },
+  "author": "",
+  "license": "SEE LICENSE IN https://raw.githubusercontent.com/EvernodeXRPL/evernode-resources/main/license/evernode-license.pdf",
+  "dependencies": {
+    "https": "^1.0.0",
+    "ws": "^8.17.0"
+  }
+}

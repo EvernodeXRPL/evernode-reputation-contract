@@ -6,8 +6,8 @@ const crypto = require('node:crypto');
 const opfile = "../opinion.txt";
 
 const FILE_PATH = '../rep_hash.dat';
-const TOTAL_FILE_SIZE = 1.5 * 1024 * 1024 * 1024;
-const WRITE_INTERVAL = 1 * 512 * 1024; 
+const TOTAL_FILE_SIZE = Math.floor(1.5 * 1024 * 1024 * 1024);
+const WRITE_INTERVAL = 1 * 512 * 1024;
 const CHUNK_SIZE = 1024 * 1024;
 
 const NUM_HASHES = TOTAL_FILE_SIZE / WRITE_INTERVAL;

@@ -174,13 +174,29 @@ const evaluatePorts = async (instanceInfo) => {
     // TODO : Method to evaluate ports.
 }
 
+const seededRandom = (seed) => {
+    var x = Math.sin(seed) * 10000;
+    return x - Math.floor(x);
+}
+
+const shuffle = (array, seed) => {
+    return array
+        .map(value => ({ value, sort: seededRandom(seed++) }))
+        .sort((a, b) => a.sort - b.sort)
+        .map(({ value }) => value);
+}
+
 const initiatePortEvaluation = async (ctx, clusterInfo) => {
+    if (ctx.lclSeqNo < PORT_EVAL_LEDGER_INTERVAL)
+        return;
+
     if (ctx.lclSeqNo % PORT_EVAL_LEDGER_INTERVAL === 0) {
         const unl = ctx.unl.list().map(n => n.publicKey);
+        const shuffled = shuffle(unl, ctx.lclSeqNo);
         // TODO : Algorithm to randomize universe.
-        const index = unl.findIndex(p => p === ctx.publicKey);
+        const index = shuffled.findIndex(p => p === ctx.publicKey);
         const subUniverseIndex = Math.floor(index / PORT_EVAL_UNIVERSE_SIZE);
-        const subUniverse = unl.slice(subUniverseIndex * PORT_EVAL_UNIVERSE_SIZE, (subUniverseIndex + 1) * PORT_EVAL_UNIVERSE_SIZE);
+        const subUniverse = shuffled.slice(subUniverseIndex * PORT_EVAL_UNIVERSE_SIZE, (subUniverseIndex + 1) * PORT_EVAL_UNIVERSE_SIZE);
         fs.writeFileSync(PORT_EVAL_UNIVERSE_SIZE, JSON.parse(subUniverse, null, 2));
     }
     else if (fs.existsSync(PORT_EVAL_UNIVERSE_FILE) && clusterInfo && Object.keys(clusterInfo).length) {

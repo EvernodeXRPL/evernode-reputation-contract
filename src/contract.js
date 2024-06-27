@@ -6,7 +6,8 @@ const crypto = require('node:crypto');
 
 const INSTANCE_INFO_FILE = "../../../../../../instance.json";
 const CLUSTER_INFO_FILE = '../cluster.json';
-const OPT_FILE = "../opinion.txt";
+const RESOURCE_OPT_FILE = "../resource_opinion.txt";
+const PORT_OPT_FILE = "../port_opinion.txt";
 const FILE_PATH = '../rep_hash.dat';
 const PORT_EVAL_UNIVERSE_FILE = '../port_eval_universe.json';
 const TOTAL_FILE_SIZE = Math.floor(1.5 * 1024 * 1024 * 1024);
@@ -167,11 +168,14 @@ async function pow(lgrhex, pubkeyhex) {
     }
 }
 
-const evaluatePorts = async (instanceInfo) => {
+const evaluateInstancePorts = async (instanceInfo) => {
     if (!instanceInfo)
-        return;
+        return 0;
 
     // TODO : Method to evaluate ports.
+    console.log('Evaluating GP ports on:', instanceInfo);
+
+    return 1;
 }
 
 const seededRandom = (seed) => {
@@ -186,30 +190,14 @@ const shuffle = (array, seed) => {
         .map(({ value }) => value);
 }
 
-const initiatePortEvaluation = async (ctx, clusterInfo) => {
-    if (ctx.lclSeqNo < PORT_EVAL_LEDGER_INTERVAL)
-        return;
-
-    if (ctx.lclSeqNo % PORT_EVAL_LEDGER_INTERVAL === 0) {
-        const unl = ctx.unl.list().map(n => n.publicKey);
-        const shuffled = shuffle(unl, ctx.lclSeqNo);
-        // TODO : Algorithm to randomize universe.
-        const index = shuffled.findIndex(p => p === ctx.publicKey);
-        const subUniverseIndex = Math.floor(index / PORT_EVAL_UNIVERSE_SIZE);
-        const subUniverse = shuffled.slice(subUniverseIndex * PORT_EVAL_UNIVERSE_SIZE, (subUniverseIndex + 1) * PORT_EVAL_UNIVERSE_SIZE);
-        fs.writeFileSync(PORT_EVAL_UNIVERSE_SIZE, JSON.parse(subUniverse, null, 2));
-    }
-    else if (fs.existsSync(PORT_EVAL_UNIVERSE_FILE) && clusterInfo && Object.keys(clusterInfo).length) {
-        const subUniverse = JSON.parse(fs.readFileSync(PORT_EVAL_UNIVERSE_FILE));
-        await Promise.all(subUniverse.filter(k => k !== ctx.publicKey).map(async k => {
-            await evaluatePorts(clusterInfo[k]);
-        }));
-    }
-}
-
-const myContract = async (ctx) => {
+const evaluateResources = async (ctx) => {
     const startTime = Date.now();
 
+    // Test code for hpdevkit.
+    // let instanceInfo = {
+    //     pubkey: ctx.publicKey,
+    //     test: "test"
+    // };
     let instanceInfo = null;
     if (fs.existsSync(INSTANCE_INFO_FILE))
         instanceInfo = JSON.parse(fs.readFileSync(INSTANCE_INFO_FILE));
@@ -218,27 +206,9 @@ const myContract = async (ctx) => {
     if (fs.existsSync(CLUSTER_INFO_FILE))
         clusterInfo = JSON.parse(fs.readFileSync(CLUSTER_INFO_FILE));
 
-    let ops = {};
-    if (fs.existsSync(OPT_FILE))
-        ops = JSON.parse(Buffer.from(fs.readFileSync(OPT_FILE), 'utf-8'));
-
-    if (ctx.readonly) {
-        for (const user of ctx.users.list()) {
-            // Loop through inputs sent by each user.
-            for (const input of user.inputs) {
-                const buffer = await ctx.users.read(input);
-
-                const message = buffer.toString();
-                const req = JSON.parse(message);
-
-                if (req.command === 'read_scores') {
-                    user.send({ message: output });
-                    const output = fs.existsSync(OPT_FILE) ? JSON.parse(fs.readFileSync(OPT_FILE).toString()) : null;
-                }
-            }
-        }
-        return;
-    }
+    let res_ops = {};
+    if (fs.existsSync(RESOURCE_OPT_FILE))
+        res_ops = JSON.parse(Buffer.from(fs.readFileSync(RESOURCE_OPT_FILE)));
 
     await sodium.ready;
 
@@ -246,14 +216,14 @@ const myContract = async (ctx) => {
 
     let storedMessages = [];
 
-    ctx.unl.onMessage(async (node, msg) => {
+    ctx.unl.onMessage(async (node, data) => {
+        const msg = JSON.parse(data);
         storedMessages.push({ node, msg });
     });
 
-    let portEval = null;
-    [[fileHash, pubKeyCodedHash], portEval] = await Promise.all(pow(ctx.lclHash, ctx.publicKey), initiatePortEvaluation(ctx, clusterInfo));
+    [fileHash, pubKeyCodedHash] = await pow(ctx.lclHash, ctx.publicKey);
 
-    await ctx.unl.send({ pow: pubKeyCodedHash, instance: instanceInfo });
+    await ctx.unl.send(JSON.stringify({ pow: pubKeyCodedHash, instance: instanceInfo }));
 
     const endTime = Date.now();
 
@@ -265,10 +235,10 @@ const myContract = async (ctx) => {
                     const pubKeyCodedHash = getPubKeyCodedHash(node.publicKey, fileHash);
 
                     if (pubKeyCodedHash == msg.pow) {
-                        if (ops[node.publicKey])
-                            ops[node.publicKey] = 1;
+                        if (!res_ops[node.publicKey])
+                            res_ops[node.publicKey] = 1;
                         else
-                            ops[node.publicKey]++;
+                            res_ops[node.publicKey]++;
                     }
 
                     if (msg.instance)
@@ -279,11 +249,11 @@ const myContract = async (ctx) => {
                 fs.writeFileSync(CLUSTER_INFO_FILE, JSON.stringify(clusterInfo, null, 2));
                 console.log("Cluster file updated successfully.");
 
-                console.log("Updating opinion file:");
-                console.log(JSON.stringify(ops, null, 2));
+                console.log("Updating resource opinion file:");
+                console.log(JSON.stringify(res_ops, null, 2));
 
-                fs.writeFileSync(OPT_FILE, JSON.stringify(ops));
-                console.log("Opinion file updated successfully.");
+                fs.writeFileSync(RESOURCE_OPT_FILE, JSON.stringify(res_ops));
+                console.log("Resource opinion file updated successfully.");
 
                 return resolve();
             } catch (e) {
@@ -292,6 +262,68 @@ const myContract = async (ctx) => {
             }
         }, (OPINION_WRITE_WAIT - (endTime - startTime)));
     });
+}
+
+const evaluatePorts = async (ctx) => {
+    if (ctx.lclSeqNo < (PORT_EVAL_LEDGER_INTERVAL - 1))
+        return;
+
+    let clusterInfo = null;
+    if (fs.existsSync(CLUSTER_INFO_FILE))
+        clusterInfo = JSON.parse(fs.readFileSync(CLUSTER_INFO_FILE));
+
+    if (fs.existsSync(PORT_EVAL_UNIVERSE_FILE) && clusterInfo && Object.keys(clusterInfo).length) {
+        let port_ops = {};
+        if (fs.existsSync(PORT_OPT_FILE))
+            port_ops = JSON.parse(Buffer.from(fs.readFileSync(PORT_OPT_FILE)));
+
+        // TODO: Forcefully terminate if ws connection hangs.
+        const subUniverse = JSON.parse(fs.readFileSync(PORT_EVAL_UNIVERSE_FILE));
+        await Promise.all(subUniverse.filter(k => k !== ctx.publicKey).map(async k => {
+            const score = await evaluateInstancePorts(clusterInfo[k]).catch(console.error);
+            if (!port_ops[k])
+                port_ops[k] = score;
+            else
+                port_ops[k] += score;
+        }));
+
+        console.log("Updating port opinion file:");
+        console.log(JSON.stringify(port_ops, null, 2));
+
+        fs.writeFileSync(PORT_OPT_FILE, JSON.stringify(port_ops));
+        console.log("Port opinion file updated successfully.");
+    }
+
+    if (((ctx.lclSeqNo + 1) % PORT_EVAL_LEDGER_INTERVAL) === 0) {
+        const unl = ctx.unl.list().map(n => n.publicKey);
+        const shuffled = shuffle(unl, ctx.lclSeqNo);
+        const index = shuffled.findIndex(p => p === ctx.publicKey);
+        const subUniverseIndex = Math.floor(index / PORT_EVAL_UNIVERSE_SIZE);
+        const subUniverse = shuffled.slice((subUniverseIndex * PORT_EVAL_UNIVERSE_SIZE), ((subUniverseIndex + 1) * PORT_EVAL_UNIVERSE_SIZE));
+        fs.writeFileSync(PORT_EVAL_UNIVERSE_FILE, JSON.stringify(subUniverse, null, 2));
+    }
+}
+
+const myContract = async (ctx) => {
+    if (ctx.readonly) {
+        for (const user of ctx.users.list()) {
+            // Loop through inputs sent by each user.
+            for (const input of user.inputs) {
+                const buffer = await ctx.users.read(input);
+
+                const message = buffer.toString();
+                const req = JSON.parse(message);
+
+                if (req.command === 'read_scores') {
+                    user.send({ message: output });
+                    const output = fs.existsSync(RESOURCE_OPT_FILE) ? JSON.parse(fs.readFileSync(RESOURCE_OPT_FILE).toString()) : null;
+                }
+            }
+        }
+        return;
+    }
+
+    await Promise.all([evaluateResources(ctx).catch(console.error), evaluatePorts(ctx).catch(console.error)]);
 };
 
 const hpc = new HotPocket.Contract();

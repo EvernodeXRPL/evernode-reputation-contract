@@ -3,17 +3,22 @@ const sodium = require('libsodium-wrappers-sumo');
 const fs = require('fs');
 const crypto = require('node:crypto');
 
-const opfile = "../opinion.txt";
 
+const INSTANCE_INFO_FILE = "../../../../../../instance.json";
+const CLUSTER_INFO_FILE = '../cluster.json';
+const OPT_FILE = "../opinion.txt";
 const FILE_PATH = '../rep_hash.dat';
+const PORT_EVAL_UNIVERSE_FILE = '../port_eval_universe.json';
 const TOTAL_FILE_SIZE = Math.floor(1.5 * 1024 * 1024 * 1024);
 const WRITE_INTERVAL = 1 * 512 * 1024;
 const CHUNK_SIZE = 1024 * 1024;
+const PORT_EVAL_LEDGER_INTERVAL = 5;
+const PORT_EVAL_UNIVERSE_SIZE = 6;
 
 const NUM_HASHES = TOTAL_FILE_SIZE / WRITE_INTERVAL;
 
 const SODIUM_FREQUENCY = 200;
-const PWHASH_MEM_LIMIT = 300 * 1024 * 1024;
+const PWHASH_MEM_LIMIT = 512 * 1024 * 1024;
 
 const OPINION_WRITE_WAIT = 90000;
 
@@ -162,8 +167,44 @@ async function pow(lgrhex, pubkeyhex) {
     }
 }
 
+const evaluatePorts = async (instanceInfo) => {
+    if (!instanceInfo)
+        return;
+
+    // TODO : Method to evaluate ports.
+}
+
+const initiatePortEvaluation = async (ctx, clusterInfo) => {
+    if (ctx.lclSeqNo % PORT_EVAL_LEDGER_INTERVAL === 0) {
+        const unl = ctx.unl.list().map(n => n.publicKey);
+        // TODO : Algorithm to randomize universe.
+        const index = unl.findIndex(p => p === ctx.publicKey);
+        const subUniverseIndex = Math.floor(index / PORT_EVAL_UNIVERSE_SIZE);
+        const subUniverse = unl.slice(subUniverseIndex * PORT_EVAL_UNIVERSE_SIZE, (subUniverseIndex + 1) * PORT_EVAL_UNIVERSE_SIZE);
+        fs.writeFileSync(PORT_EVAL_UNIVERSE_SIZE, JSON.parse(subUniverse, null, 2));
+    }
+    else if (fs.existsSync(PORT_EVAL_UNIVERSE_FILE) && clusterInfo && Object.keys(clusterInfo).length) {
+        const subUniverse = JSON.parse(fs.readFileSync(PORT_EVAL_UNIVERSE_FILE));
+        await Promise.all(subUniverse.filter(k => k !== ctx.publicKey).map(async k => {
+            await evaluatePorts(clusterInfo[k]);
+        }));
+    }
+}
+
 const myContract = async (ctx) => {
     const startTime = Date.now();
+
+    let instanceInfo = null;
+    if (fs.existsSync(INSTANCE_INFO_FILE))
+        instanceInfo = JSON.parse(fs.readFileSync(INSTANCE_INFO_FILE));
+
+    let clusterInfo = {};
+    if (fs.existsSync(CLUSTER_INFO_FILE))
+        clusterInfo = JSON.parse(fs.readFileSync(CLUSTER_INFO_FILE));
+
+    let ops = {};
+    if (fs.existsSync(OPT_FILE))
+        ops = JSON.parse(Buffer.from(fs.readFileSync(OPT_FILE), 'utf-8'));
 
     if (ctx.readonly) {
         for (const user of ctx.users.list()) {
@@ -175,8 +216,8 @@ const myContract = async (ctx) => {
                 const req = JSON.parse(message);
 
                 if (req.command === 'read_scores') {
-                    const output = fs.existsSync(opfile) ? JSON.parse(fs.readFileSync(opfile).toString()) : null;
                     user.send({ message: output });
+                    const output = fs.existsSync(OPT_FILE) ? JSON.parse(fs.readFileSync(OPT_FILE).toString()) : null;
                 }
             }
         }
@@ -185,60 +226,49 @@ const myContract = async (ctx) => {
 
     await sodium.ready;
 
-    let good = {};
-
     let [fileHash, pubKeyCodedHash] = [null, null];
 
     let storedMessages = [];
 
     ctx.unl.onMessage(async (node, msg) => {
-        if (!fileHash) {
-            storedMessages.push({ node, msg });
-            return;
-        } else {
-            const pubKeyCodedHash = getPubKeyCodedHash(node.publicKey, fileHash);
-            if (pubKeyCodedHash == msg) {
-                good[node.publicKey] = 1;
-            }
-        }
+        storedMessages.push({ node, msg });
     });
 
-    [fileHash, pubKeyCodedHash] = await pow(ctx.lclHash, ctx.publicKey);
+    let portEval = null;
+    [[fileHash, pubKeyCodedHash], portEval] = await Promise.all(pow(ctx.lclHash, ctx.publicKey), initiatePortEvaluation(ctx, clusterInfo));
 
-    for (const { node, msg } of storedMessages) {
-        const pubKeyCodedHash = getPubKeyCodedHash(node.publicKey, fileHash);
-
-        if (pubKeyCodedHash == msg) {
-            good[node.publicKey] = 1;
-        }
-    }
-
-    await ctx.unl.send(pubKeyCodedHash);
+    await ctx.unl.send({ pow: pubKeyCodedHash, instance: instanceInfo });
 
     const endTime = Date.now();
 
     await new Promise((resolve) => {
         setTimeout(() => {
             try {
-                if (!fs.existsSync(opfile)) {
-                    console.log("\nCreating optfile:");
-                    console.log(JSON.stringify(good) + "\n");
-                    fs.appendFileSync(opfile, JSON.stringify(good));
-                    console.log("\nOptfile created successfully.");
-                    return resolve();
+                console.log("Checking received POWs..");
+                for (const { node, msg } of storedMessages) {
+                    const pubKeyCodedHash = getPubKeyCodedHash(node.publicKey, fileHash);
+
+                    if (pubKeyCodedHash == msg.pow) {
+                        if (ops[node.publicKey])
+                            ops[node.publicKey] = 1;
+                        else
+                            ops[node.publicKey]++;
+                    }
+
+                    if (msg.instance)
+                        clusterInfo[node.publicKey] = msg.instance;
                 }
 
-                let ops = JSON.parse(Buffer.from(fs.readFileSync(opfile), 'utf-8'));
-                for (k in good) {
-                    if (k in ops)
-                        ops[k]++;
-                    else
-                        ops[k] = 1;
-                }
-                console.log("\nUpdating optfile:");
-                console.log(JSON.stringify(ops) + "\n");
-                fs.writeFileSync(opfile, JSON.stringify(ops));
-                console.log("\nOptfile updated successfully.");
+                console.log("Updating cluster file:");
+                fs.writeFileSync(CLUSTER_INFO_FILE, JSON.stringify(clusterInfo, null, 2));
+                console.log("Cluster file updated successfully.");
+
+                console.log("Updating opinion file:");
+                console.log(JSON.stringify(ops, null, 2));
+
+                fs.writeFileSync(OPT_FILE, JSON.stringify(ops));
+                console.log("Opinion file updated successfully.");
+
                 return resolve();
             } catch (e) {
                 console.error(e);

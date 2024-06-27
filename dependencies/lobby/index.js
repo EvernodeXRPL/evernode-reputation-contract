@@ -3,20 +3,24 @@ const https = require('https');
 const fs = require('fs');
 const WebSocket = require('ws');
 
+const CONTRACT_PATH = "/contract";
+const INIT_FLAG = "/init.flag";
+const INSTANCE_INFO_FILE = "/instance.json";
+
 function readHpCfg() {
-    return JSON.parse(fs.readFileSync('/contract/cfg/hp.cfg'));
+    return JSON.parse(fs.readFileSync(`${CONTRACT_PATH}/cfg/hp.cfg`));
 }
 
 function writeHpCfg(cfg) {
-    fs.writeFileSync('/contract/cfg/hp.cfg', JSON.stringify(cfg, null, 2));
+    fs.writeFileSync(`${CONTRACT_PATH}/cfg/hp.cfg`, JSON.stringify(cfg, null, 2));
 }
 
 function updateHpContract(unl, peers) {
     if (fs.existsSync('/deploy')) {
         const out = execSync(`
-                rm -rf /contract/contract_fs/seed/state/bootstrap_contract &&
-                rm -rf /contract/contract_fs/seed/state/bootstrap_upgrade.sh &&
-                cp /deploy/contract/* /contract/contract_fs/seed/state/ &&
+                rm -rf ${CONTRACT_PATH}/contract_fs/seed/state/bootstrap_contract &&
+                rm -rf ${CONTRACT_PATH}/contract_fs/seed/state/bootstrap_upgrade.sh &&
+                cp /deploy/contract/* ${CONTRACT_PATH}/contract_fs/seed/state/ &&
                 rm -rf /deploy
                 `);
         console.log(out.toString());
@@ -48,7 +52,11 @@ function updateHpContract(unl, peers) {
     writeHpCfg(cfg);
 
     console.log('Writing init flag...');
-    fs.writeFileSync('/init.flag', '1');
+    fs.writeFileSync(INIT_FLAG, '1');
+}
+
+function writeInstanceDetails(instanceDetails) {
+    fs.writeFileSync(INSTANCE_INFO_FILE, JSON.stringify(instanceDetails, null, 2));
 }
 
 function lobby(handleData, handleError) {
@@ -56,8 +64,8 @@ function lobby(handleData, handleError) {
     const userPort = cfg.user.port;
 
     const serverOptions = {
-        cert: fs.readFileSync('/contract/cfg/tlscert.pem'),
-        key: fs.readFileSync('/contract/cfg/tlskey.pem')
+        cert: fs.readFileSync(`${CONTRACT_PATH}/cfg/tlscert.pem`),
+        key: fs.readFileSync(`${CONTRACT_PATH}/cfg/tlskey.pem`)
     };
 
     const server = https.createServer(serverOptions);
@@ -110,6 +118,9 @@ function main() {
         switch (data.type) {
             case 'upgrade':
                 try {
+                    console.log('Writing the instance details...');
+                    writeInstanceDetails(data.data.instanceDetails);
+
                     console.log('Upgrading the contract...');
                     updateHpContract(data.data.unl, data.data.peers);
                     ack({

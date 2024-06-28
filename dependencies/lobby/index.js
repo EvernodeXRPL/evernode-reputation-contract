@@ -2,6 +2,7 @@ import { execSync } from 'child_process';
 const https = require('https');
 const fs = require('fs');
 const WebSocket = require('ws');
+const sodium = require('libsodium-wrappers');
 
 const CONTRACT_PATH = "/contract";
 const INIT_FLAG = "/init.flag";
@@ -59,9 +60,13 @@ function writeInstanceDetails(instanceDetails) {
     fs.writeFileSync(INSTANCE_INFO_FILE, JSON.stringify(instanceDetails, null, 2));
 }
 
-function lobby(handleData, handleError) {
+async function lobby(handleData, handleError) {
+    await sodium.ready;
+
     const cfg = readHpCfg();
     const userPort = cfg.user.port;
+    const userPubkeyHex = cfg.contract.bin_args;
+    const userPubkey = sodium.from_hex(userPubkeyHex.slice(2));
 
     const serverOptions = {
         cert: fs.readFileSync(`${CONTRACT_PATH}/cfg/tlscert.pem`),
@@ -87,10 +92,28 @@ function lobby(handleData, handleError) {
             console.log('Received:', message.toString());
             try {
                 const data = JSON.parse(message);
-                handleData(data, ack, terminate);
+                console.log('Verifying the signature..');
+                const signature = sodium.from_hex(data.signature);
+                const isValid = sodium.crypto_sign_verify_detached(signature, data.message, userPubkey);
+                if (!isValid) {
+                    console.error('Invalid signature');
+                    ack({
+                        errorCode: 'UNAUTHORIZED',
+                        e: 'Invalid signature'
+                    });
+                }
+                else {
+                    const obj = JSON.parse(data.message);
+                    handleData(obj, ack, terminate);
+                }
+
             }
             catch (e) {
                 console.error('Error occurred while handling the message.', e);
+                ack({
+                    errorCode: 'UNKNOWN',
+                    e: e
+                });
             }
         });
 
@@ -112,8 +135,8 @@ function lobby(handleData, handleError) {
     });
 }
 
-function main() {
-    lobby(async (data, ack, terminate) => {
+async function main() {
+    await lobby(async (data, ack, terminate) => {
         console.log('Received command :', data.type ?? 'unknown');
         switch (data.type) {
             case 'upgrade':
@@ -150,4 +173,4 @@ function main() {
     });
 }
 
-main();
+main().catch(console.error);

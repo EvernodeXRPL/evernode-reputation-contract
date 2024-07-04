@@ -4,6 +4,8 @@ RUN mkdir -p /deploy/contract
 COPY contract/* /deploy/contract
 RUN mkdir -p /usr/local/bin/hotpocket/lobby
 COPY lobby/* /usr/local/bin/hotpocket/lobby
+RUN mkdir -p /usr/local/bin/hotpocket/watchdog
+COPY watchdog/* /usr/local/bin/hotpocket/watchdog
 COPY startup.sh /usr/local/bin/hotpocket/startup.sh
 
 ENTRYPOINT ["/usr/local/bin/hotpocket/startup.sh"]

@@ -2,15 +2,15 @@ const HotPocket = require('hotpocket-nodejs-contract');
 const sodium = require('libsodium-wrappers-sumo');
 const fs = require('fs');
 const crypto = require('node:crypto');
+const WebSocket = require('ws');
 
-
-const INSTANCE_INFO_FILE = "../../../../../../instance.json";
+const INSTANCE_INFO_FILE = "../../../../../instance.json";
 const CLUSTER_INFO_FILE = '../cluster.json';
 const RESOURCE_OPT_FILE = "../resource_opinion.txt";
 const PORT_OPT_FILE = "../port_opinion.txt";
 const FILE_PATH = '../rep_hash.dat';
 const PORT_EVAL_UNIVERSE_FILE = '../port_eval_universe.json';
-const TOTAL_FILE_SIZE = Math.floor(1.5 * 1024 * 1024 * 1024);
+const TOTAL_FILE_SIZE = Math.floor(1.5 * 1 * 1 * 1024);// Math.floor(1.5 * 1024 * 1024 * 1024);
 const WRITE_INTERVAL = 1 * 512 * 1024;
 const CHUNK_SIZE = 1024 * 1024;
 const PORT_EVAL_LEDGER_INTERVAL = 5;
@@ -172,6 +172,30 @@ const evaluateInstancePorts = async (instanceInfo) => {
     if (!instanceInfo)
         return 0;
 
+    // Create websocket connection here. wait for the response and evaluate.
+    const url = 'ws://localhost:36525';//obtain from instanceInfo
+    const connection = new WebSocket(url);
+    connection.onopen = () => {
+        console.log('Connected to the WebSocket server');
+      
+        // Send a message to the WebSocket server
+        const message = 'Hello, WebSocket server!';
+        console.log('Sending:', message);
+        connection.send(message);
+      };
+      
+      connection.onmessage = (event) => {
+        console.log('Received:', event.data.toString());
+      };
+      
+      connection.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+      
+      connection.onclose = () => {
+        console.log('Disconnected from the WebSocket server');
+      };
+    // instanceInfo contains port values
     // TODO : Method to evaluate ports.
     console.log('Evaluating GP ports on:', instanceInfo);
 
@@ -323,7 +347,7 @@ const myContract = async (ctx) => {
         return;
     }
 
-    await Promise.all([evaluateResources(ctx).catch(console.error), evaluatePorts(ctx).catch(console.error)]);
+    await Promise.all([ evaluatePorts(ctx).catch(console.error)]);
 };
 
 const hpc = new HotPocket.Contract();

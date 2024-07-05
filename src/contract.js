@@ -221,20 +221,20 @@ const evaluateInstancePorts = async (instanceInfo, ctx) => {
 
             let completed = false;
             function handleResolve(...args) {
+                terminate();
                 if (!completed) {
-                    if (args)
+                    if ((args?.length ?? 0) > 0)
                         logInf(...args);
-                    terminate();
                     resolve(args?.length ? args[0] : null);
                     completed = true;
                 }
             }
 
             function handleReject(...args) {
+                terminate();
                 if (!completed) {
-                    if (args)
+                    if ((args?.length ?? 0) > 0)
                         logErr(...args);
-                    terminate();
                     reject(args?.length ? args[0] : null);
                     completed = true;
                 }
@@ -419,7 +419,7 @@ const myContract = async (ctx) => {
 
     await Promise.all([evaluateResources(ctx).catch(console.error), evaluatePorts(ctx).catch(console.error)]);
     console.log('Terminating the contract');
-    process.kill(process.pid, 'SIGINT');
+    process.kill(process.pid, 'SIGKILL');
 };
 
 const hpc = new HotPocket.Contract();

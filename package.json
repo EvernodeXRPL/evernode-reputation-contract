@@ -5,7 +5,7 @@
   "main": "src/contract.js",
   "scripts": {
     "build": "npx ncc build src/contract.js -o dist",
-    "bundle": "npm --prefix ./dependencies/lobby i && npm run --prefix ./dependencies/lobby build && npm --prefix ./dependencies/watchdog i && npm run --prefix ./dependencies/watchdog build && npm i && npm run build",
+    "bundle": "npm --prefix ./dependencies/lobby i && npm run --prefix ./dependencies/lobby build && npm --prefix ./dependencies/gp-port-server i && npm run --prefix ./dependencies/gp-port-server build && npm i && npm run build",
     "start": "npm run build && hpdevkit deploy dist"
   },
   "repository": {

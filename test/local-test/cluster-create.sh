@@ -34,7 +34,11 @@ fi
 echo "Building reputation docker"
 npm run --prefix ../../ build
 npm run --prefix ../../ bundle
-../docker/build.sh
+
+pushd ../docker >/dev/null 2>&1
+./build.sh
+
+popd >/dev/null 2>&1
 
 # Delete and recreate 'repcluster' directory.
 sudo rm -rf repcluster >/dev/null 2>&1
@@ -78,11 +82,12 @@ for ((i = 0; i < $ncount; i++)); do
                 peer_port: ${peerport}, \
                 user_port: ${pubport}, \
                 gp_tcp_port: ${gptcpport}, \
-                gp_udp_port: ${gpudpport} \
+                gp_udp_port: ${gpudpport}, \
+                domain: '$iprange.${n}'
             }, null, 2)" >./node$n/instance.json
 
     # Write the init flag to skip lobby
-    echo 1 > ./node$n/init.flag
+    echo 1 >./node$n/init.flag
 
     pushd ./node$n/cfg >/dev/null 2>&1
 
@@ -107,7 +112,7 @@ for ((i = 0; i < $ncount; i++)); do
                     id: '${contract_id}', \
                     bin_path: '/usr/bin/node', \
                     bin_args: 'index.js', \
-                    environment: {}, \
+                    environment: { "NODE_TLS_REJECT_UNAUTHORIZED": '0' }, \
                     consensus: { \
                         ...require('./tmp.json').contract.consensus, \
                         mode: 'public', \

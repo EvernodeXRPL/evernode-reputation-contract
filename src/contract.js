@@ -15,6 +15,7 @@ const WRITE_INTERVAL = 1 * 512 * 1024;
 const CHUNK_SIZE = 1024 * 1024;
 const PORT_EVAL_LEDGER_INTERVAL = 5;
 const PORT_EVAL_UNIVERSE_SIZE = 6;
+const PORT_EVAL_TIMEOUT = 5000;
 
 const NUM_HASHES = TOTAL_FILE_SIZE / WRITE_INTERVAL;
 
@@ -168,38 +169,105 @@ async function pow(lgrhex, pubkeyhex) {
     }
 }
 
-const evaluateInstancePorts = async (instanceInfo) => {
+const preparePortEvalMessage = (instanceInfo, ctx) => {
+    return `${ctx.lclHash}${instanceInfo.pubkey}`;
+}
+
+const evaluatePortEvalMessage = (instanceInfo, ctx, message) => {
+    const evalMessage = preparePortEvalMessage(instanceInfo, ctx);
+    return message == evalMessage ? 1 : 0;
+}
+
+const evaluateInstancePorts = async (instanceInfo, ctx) => {
     if (!instanceInfo)
         return 0;
 
-    // Create websocket connection here. wait for the response and evaluate.
-    const url = 'ws://localhost:36525';//obtain from instanceInfo
-    const connection = new WebSocket(url);
-    connection.onopen = () => {
-        console.log('Connected to the WebSocket server');
-      
-        // Send a message to the WebSocket server
-        const message = 'Hello, WebSocket server!';
-        console.log('Sending:', message);
-        connection.send(message);
-      };
-      
-      connection.onmessage = (event) => {
-        console.log('Received:', event.data.toString());
-      };
-      
-      connection.onerror = (error) => {
-        console.error('WebSocket error:', error);
-      };
-      
-      connection.onclose = () => {
-        console.log('Disconnected from the WebSocket server');
-      };
-    // instanceInfo contains port values
-    // TODO : Method to evaluate ports.
-    console.log('Evaluating GP ports on:', instanceInfo);
+    const evalMessage = preparePortEvalMessage(instanceInfo, ctx);
 
-    return 1;
+    const tcpPortList = instanceInfo ? [instanceInfo.gp_tcp_port, instanceInfo.gp_tcp_port + 1] : [];
+    const udpPortList = instanceInfo ? [instanceInfo.gp_udp_port, instanceInfo.gp_udp_port + 1] : [];
+    const portsToEval = [...tcpPortList, ...udpPortList];
+
+    if (!portsToEval.length)
+        return 0;
+
+    const domain = instanceInfo.domain;
+
+    let score = 0;
+
+    await Promise.all(portsToEval.map((port) => (new Promise((resolve, reject) => {
+        console.log(`Evaluating ports on instance: ${instanceInfo.pubkey}`);
+
+        const url = `wss://${domain}:${port}`;
+
+        function logInf(...args) {
+            console.log(`${url} -`, ...args);
+        }
+
+        function logErr(...args) {
+            console.error(`${url} -`, ...args);
+        }
+
+        let completed = false;
+        function handleResolve(...args) {
+            if (!completed) {
+                completed = true;
+                resolve(args?.length ? args[0] : null);
+            }
+        }
+
+        function handleReject(...args) {
+            if (!completed) {
+                completed = true;
+                if (args)
+                    logErr(...args);
+                reject(args?.length ? args[0] : null);
+            }
+        }
+
+        logInf('Evaluating GP port');
+
+        const connection = new WebSocket(url);
+
+        const terminate = () => {
+            connection.close();
+        }
+
+        connection.onopen = () => {
+            logInf('Connected to the WebSocket server');
+
+            // Send a evaluation message to the peer instance
+            logInf('Sending:', evalMessage);
+            connection.send(evalMessage);
+        };
+
+        connection.onmessage = (event) => {
+            terminate();
+            const message = event.data.toString();
+            logInf('Received:', message);
+            // Evaluate the received message and increment score.
+            score += evaluatePortEvalMessage(instanceInfo, ctx, message);
+            handleResolve();
+        };
+
+        connection.onerror = (error) => {
+            handleReject('WebSocket error:', error);
+        };
+
+        connection.onclose = () => {
+            handleReject('Disconnected from the WebSocket server');
+        };
+
+        process.on('SIGINT', function () {
+            handleReject('SIGINT received');
+        });
+
+        setTimeout(() => {
+            handleReject(`Max timeout ${PORT_EVAL_TIMEOUT} reached`);
+        }, PORT_EVAL_TIMEOUT);
+    }).catch(console.error))));
+
+    return ((score / portsToEval.length) * PORT_EVAL_LEDGER_INTERVAL);
 }
 
 const seededRandom = (seed) => {
@@ -217,11 +285,6 @@ const shuffle = (array, seed) => {
 const evaluateResources = async (ctx) => {
     const startTime = Date.now();
 
-    // Test code for hpdevkit.
-    // let instanceInfo = {
-    //     pubkey: ctx.publicKey,
-    //     test: "test"
-    // };
     let instanceInfo = null;
     if (fs.existsSync(INSTANCE_INFO_FILE))
         instanceInfo = JSON.parse(fs.readFileSync(INSTANCE_INFO_FILE));
@@ -304,7 +367,7 @@ const evaluatePorts = async (ctx) => {
         // TODO: Forcefully terminate if ws connection hangs.
         const subUniverse = JSON.parse(fs.readFileSync(PORT_EVAL_UNIVERSE_FILE));
         await Promise.all(subUniverse.filter(k => k !== ctx.publicKey).map(async k => {
-            const score = await evaluateInstancePorts(clusterInfo[k]).catch(console.error);
+            const score = await evaluateInstancePorts(clusterInfo[k], ctx).catch(console.error);
             if (!port_ops[k])
                 port_ops[k] = score;
             else

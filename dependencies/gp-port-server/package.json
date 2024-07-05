@@ -1,5 +1,5 @@
 {
-  "name": "watchdog",
+  "name": "gp-port-server",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -10,6 +10,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "ws": "^8.17.1"
+    "https": "1.0.0",
+    "ws": "8.17.1"
   }
 }

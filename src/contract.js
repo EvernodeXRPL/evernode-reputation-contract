@@ -196,7 +196,7 @@ const evaluateInstancePorts = async (instanceInfo, ctx) => {
     let score = 0;
 
     await Promise.all(portsToEval.map(async (port) => {
-        new Promise((resolve, reject) => {
+        await new Promise((resolve, reject) => {
             console.log(`Evaluating ports on instance: ${instanceInfo.pubkey}`);
 
             const url = `wss://${domain}:${port}`;

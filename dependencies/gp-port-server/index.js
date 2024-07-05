@@ -26,11 +26,11 @@ const pow = (message) => {
   const serverAddr = `wss://${domain}:${port}`
 
   function logInf(...args) {
-    console.log(`${serverAddr} -`, ...args);
+    console.log(`[GPServer] ${serverAddr} -`, ...args);
   }
 
   function logErr(...args) {
-    console.error(`${serverAddr} -`, ...args);
+    console.error(`[GPServer] ${serverAddr} -`, ...args);
   }
 
   const server = https.createServer(serverOptions);

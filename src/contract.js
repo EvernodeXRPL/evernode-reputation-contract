@@ -195,79 +195,86 @@ const evaluateInstancePorts = async (instanceInfo, ctx) => {
 
     let score = 0;
 
-    await Promise.all(portsToEval.map((port) => (new Promise((resolve, reject) => {
-        console.log(`Evaluating ports on instance: ${instanceInfo.pubkey}`);
+    await Promise.all(portsToEval.map(async (port) => {
+        new Promise((resolve, reject) => {
+            console.log(`Evaluating ports on instance: ${instanceInfo.pubkey}`);
 
-        const url = `wss://${domain}:${port}`;
+            const url = `wss://${domain}:${port}`;
 
-        function logInf(...args) {
-            console.log(`${url} -`, ...args);
-        }
-
-        function logErr(...args) {
-            console.error(`${url} -`, ...args);
-        }
-
-        let completed = false;
-        function handleResolve(...args) {
-            if (!completed) {
-                completed = true;
-                resolve(args?.length ? args[0] : null);
+            function logInf(...args) {
+                console.log(`[GPClient] ${url} -`, ...args);
             }
-        }
 
-        function handleReject(...args) {
-            if (!completed) {
-                completed = true;
-                if (args)
-                    logErr(...args);
-                reject(args?.length ? args[0] : null);
+            function logErr(...args) {
+                console.error(`[GPClient] ${url} -`, ...args);
             }
-        }
 
-        logInf('Evaluating GP port');
+            logInf('Evaluating GP port');
 
-        const connection = new WebSocket(url);
+            const connection = new WebSocket(url);
 
-        const terminate = () => {
-            connection.close();
-        }
+            const terminate = () => {
+                connection.close();
+                connection.removeAllListeners();
+                connection.terminate();
+            }
 
-        connection.onopen = () => {
-            logInf('Connected to the WebSocket server');
+            let completed = false;
+            function handleResolve(...args) {
+                if (!completed) {
+                    if (args)
+                        logInf(...args);
+                    terminate();
+                    resolve(args?.length ? args[0] : null);
+                    completed = true;
+                }
+            }
 
-            // Send a evaluation message to the peer instance
-            logInf('Sending:', evalMessage);
-            connection.send(evalMessage);
-        };
+            function handleReject(...args) {
+                if (!completed) {
+                    if (args)
+                        logErr(...args);
+                    terminate();
+                    reject(args?.length ? args[0] : null);
+                    completed = true;
+                }
+            }
 
-        connection.onmessage = (event) => {
-            terminate();
-            const message = event.data.toString();
-            logInf('Received:', message);
-            // Evaluate the received message and increment score.
-            score += evaluatePortEvalMessage(instanceInfo, ctx, message);
-            handleResolve();
-        };
+            connection.onopen = () => {
+                logInf('Connected to the WebSocket server');
 
-        connection.onerror = (error) => {
-            handleReject('WebSocket error:', error);
-        };
+                // Send a evaluation message to the peer instance
+                logInf('Sending:', evalMessage);
+                connection.send(evalMessage);
+            };
 
-        connection.onclose = () => {
-            handleReject('Disconnected from the WebSocket server');
-        };
+            connection.onmessage = (event) => {
+                const message = event.data.toString();
+                logInf('Received:', message);
+                // Evaluate the received message and increment score.
+                score += evaluatePortEvalMessage(instanceInfo, ctx, message);
+                handleResolve();
+            };
 
-        process.on('SIGINT', function () {
-            handleReject('SIGINT received');
-        });
+            connection.onerror = (error) => {
+                handleReject('WebSocket error:', error);
+            };
 
-        setTimeout(() => {
-            handleReject(`Max timeout ${PORT_EVAL_TIMEOUT} reached`);
-        }, PORT_EVAL_TIMEOUT);
-    }).catch(console.error))));
+            connection.onclose = () => {
+                handleReject('Disconnected from the WebSocket server');
+            };
 
-    return ((score / portsToEval.length) * PORT_EVAL_LEDGER_INTERVAL);
+            process.on('SIGINT', function () {
+                handleReject('SIGINT received');
+            });
+
+            setTimeout(() => {
+                handleReject(`Max timeout ${PORT_EVAL_TIMEOUT} reached`);
+            }, PORT_EVAL_TIMEOUT);
+        }).catch(console.error);
+    }));
+
+    return score;
 }
 
 const seededRandom = (seed) => {
@@ -411,7 +418,9 @@ const myContract = async (ctx) => {
     }
 
     await Promise.all([evaluateResources(ctx).catch(console.error), evaluatePorts(ctx).catch(console.error)]);
+    console.log('Terminating the contract');
+    process.kill(process.pid, 'SIGINT');
 };
 
 const hpc = new HotPocket.Contract();
-hpc.init(myContract, null, true);
+hpc.init(myContract, null, false);

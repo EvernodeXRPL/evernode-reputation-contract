@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Runs the specified node of the local cluster with hpcore docker image. (created via cluster-create.sh)
-# This script assumes you already have the hpcore docker image and 'hpnet' virtual docker network.
+# This script assumes you already have the hpcore docker image and 'repnet' virtual docker network.
 # Usage (to run the node no. 1): ./cluster-start.sh 1
 
 # Validate the node count arg.
@@ -12,24 +12,26 @@ else
   exit 1
 fi
 
-clusterloc=$(pwd)/hpcluster
+clusterloc=$(pwd)/repcluster
 n=$1
-# hpversion=0.6.4
+iprange="172.1.2"
+repimage="evernodedev/reputation:hp.latest-ubt.20.04"
 
 let pubport=8080+$n
 let peerport=22860+$n
-let gpport=36525+$n
+let gptcpport=$((36523 + 2 * n))
+let gpudpport=$((39062 + 2 * n))
 
 # Mount the node<id> contract directory into hpcore docker container and run.
-# We specify --network=hpnet so all nodes will communicate via 'hpnet' docker virtual network.
+# We specify --network=repnet so all nodes will communicate via 'repnet' docker virtual network.
 # We specify --name for each node so it will be the virtual dns name for each node.
-docker run --rm -t -i --network=hpnet --ip=172.1.1.${n} --name=node${n} \
-    -p ${pubport}:${pubport} \
-    -p ${peerport}:${peerport} \
-    -p ${gpport}:${gpport} \
-    --device /dev/fuse --cap-add SYS_ADMIN --security-opt apparmor:unconfined \
-    --mount type=bind,source=${clusterloc}/node${n},target=/contract \
-    evernodedev/reputation:hp.latest-ubt.20.04 run /contract
-
-# # copy watchdog server to docker file system
-# docker cp . my-websocket-server:/usr/local/bin/hotpocket/watchdog
+docker run --rm -t -i --network=repnet --ip=${iprange}.${n} --name=node${n} \
+  -p ${pubport}:${pubport} \
+  -p ${peerport}:${peerport} \
+  -p ${gptcpport}:${gptcpport} \
+  -p $((gptcpport + 1)):$((gptcpport + 1)) \
+  -p ${gpudpport}:${gpudpport} \
+  -p $((gpudpport + 1)):$((gpudpport + 1)) \
+  --device /dev/fuse --cap-add SYS_ADMIN --security-opt apparmor:unconfined \
+  --mount type=bind,source=${clusterloc}/node${n},target=/contract \
+  ${repimage} run /contract

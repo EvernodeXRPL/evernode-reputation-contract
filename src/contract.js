@@ -4,13 +4,13 @@ const fs = require('fs');
 const crypto = require('node:crypto');
 const WebSocket = require('ws');
 
-const INSTANCE_INFO_FILE = "../../../../../instance.json";
+const INSTANCE_INFO_FILE = "../../../../instance.json";
 const CLUSTER_INFO_FILE = '../cluster.json';
 const RESOURCE_OPT_FILE = "../resource_opinion.txt";
 const PORT_OPT_FILE = "../port_opinion.txt";
 const FILE_PATH = '../rep_hash.dat';
 const PORT_EVAL_UNIVERSE_FILE = '../port_eval_universe.json';
-const TOTAL_FILE_SIZE = Math.floor(1.5 * 1 * 1 * 1024);// Math.floor(1.5 * 1024 * 1024 * 1024);
+const TOTAL_FILE_SIZE = Math.floor(1.5 * 1024 * 1024 * 1024);
 const WRITE_INTERVAL = 1 * 512 * 1024;
 const CHUNK_SIZE = 1024 * 1024;
 const PORT_EVAL_LEDGER_INTERVAL = 5;
@@ -269,7 +269,7 @@ const evaluateResources = async (ctx) => {
                         clusterInfo[node.publicKey] = msg.instance;
                 }
 
-                console.log("Updating cluster file:");
+                console.log(`Updating cluster file with ${Object.keys(clusterInfo).length} instance details..`);
                 fs.writeFileSync(CLUSTER_INFO_FILE, JSON.stringify(clusterInfo, null, 2));
                 console.log("Cluster file updated successfully.");
 
@@ -347,7 +347,7 @@ const myContract = async (ctx) => {
         return;
     }
 
-    await Promise.all([ evaluatePorts(ctx).catch(console.error)]);
+    await Promise.all([evaluateResources(ctx).catch(console.error), evaluatePorts(ctx).catch(console.error)]);
 };
 
 const hpc = new HotPocket.Contract();

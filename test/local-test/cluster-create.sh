@@ -1,24 +1,25 @@
 #!/bin/bash
 # Script to generate docker container clusters for local development testing.
-# Generate contract sub-directories within "hpcluster" directory for the given no. of cluster nodes.
+# Generate contract sub-directories within "repcluster" directory for the given no. of cluster nodes.
 # Usage: To generate 5-node cluster:         ./cluster-create.sh 5
 #        Specify log level (default: inf):   ./cluster-create.sh 5 dbg
 #        Specify round time (default: 1000): ./cluster-create.sh 5 inf 2000
 
 # Validate the node count arg.
 if [ -n "$1" ] && [ "$1" -eq "$1" ] 2>/dev/null; then
-  echo "Generating a HotPocket cluster of ${1} node(s)..."
+    echo "Generating a Reputation contract cluster of ${1} node(s)..."
 else
-  echo "Error: Please provide number of nodes."
-  exit 1
+    echo "Error: Please provide number of nodes."
+    exit 1
 fi
 
 ncount=$1
 loglevel=$2
 roundtime=$3
+threshold=$4
 hpcore=$(realpath ../..)
-iprange="172.1.1"
-
+iprange="172.1.2"
+hpimage="evernode/hotpocket:latest-ubt.20.04"
 
 if [ "$loglevel" = "" ]; then
     loglevel=inf
@@ -26,53 +27,73 @@ fi
 if [ "$roundtime" = "" ]; then
     roundtime=10000
 fi
+if [ "$threshold" = "" ]; then
+    threshold=60
+fi
 
-# Delete and recreate 'hpcluster' directory.
-sudo rm -rf hpcluster > /dev/null 2>&1
-mkdir hpcluster
-clusterloc="./hpcluster"
+echo "Building reputation docker"
+npm run --prefix ../../ build
+npm run --prefix ../../ bundle
+../docker/build.sh
 
-pushd $clusterloc > /dev/null 2>&1
+# Delete and recreate 'repcluster' directory.
+sudo rm -rf repcluster >/dev/null 2>&1
+mkdir repcluster
+clusterloc="./repcluster"
+
+pushd $clusterloc >/dev/null 2>&1
 
 # Create contract directories for all nodes in the cluster.
-for (( i=0; i<$ncount; i++ ))
-do
+for ((i = 0; i < $ncount; i++)); do
 
     let n=$i+1
     let peerport=22860+$n
     let pubport=8080+$n
+    let gptcpport=$((36523 + 2 * n))
+    let gpudpport=$((39062 + 2 * n))
+    contract_id="3c349abe-4d70-4f50-9fa6-018f1f2530ab"
 
     # Create contract dir named "node<i>"
-    # ../bin/hpcore new "node${n}" > /dev/null 2>&1
     mkdir node${n}
 
-    # docker run -d --rm \
-    # --mount type=bind,src=./node${n},dst=/contract \
-    # evernode/hotpocket:latest-ubt.20.04 new /contract
-
     docker run --rm --mount type=bind,src=./node${n},dst=/tmp \
-    evernode/hotpocket:latest-ubt.20.04 new /tmp/contract
+        ${hpimage} new /tmp/contract
 
     sudo chown -R $(whoami):$(whoami) ./node${n}/contract
     mv node${n}/contract/* node${n}/
-    # tar xf ../contract_template.tar -C "node${n}" --strip-components=1  > /dev/null 2>&1
 
     cp ../../../dist/* node${n}/contract_fs/seed/state
 
-    pushd ./node$n/cfg > /dev/null 2>&1
-
     # Use NodeJs to manipulate HP json configuration.
 
-    mv hp.cfg tmp.json  # nodejs needs file extension to be .json
+    mv ./node$n/cfg/hp.cfg ./node$n/cfg/tmp.json # nodejs needs file extension to be .json
+
+    pubkey=$(node -p "require('./node$n/cfg/tmp.json').node.public_key")
+
+    # Create instance info file
+
+    node -p "JSON.stringify({\
+                pubkey: '${pubkey}',\
+                contract_id: '${contract_id}',\
+                peer_port: ${peerport}, \
+                user_port: ${pubport}, \
+                gp_tcp_port: ${gptcpport}, \
+                gp_udp_port: ${gpudpport} \
+            }, null, 2)" >./node$n/instance.json
+
+    # Write the init flag to skip lobby
+    echo 1 > ./node$n/init.flag
+
+    pushd ./node$n/cfg >/dev/null 2>&1
 
     # Collect each node pubkey and peer ports for later processing.
 
-    pubkeys[i]=$(node -p "require('./tmp.json').node.public_key")
+    pubkeys[i]="$pubkey"
 
     # During hosting we use docker virtual dns instead of IP address.
     # So each node is reachable via 'node<id>' name.
     peers[i]="$iprange.${n}:${peerport}"
-    
+
     # Update config.
     node_json=$(node -p "JSON.stringify({...require('./tmp.json').node, \
                     history: 'custom',\
@@ -83,15 +104,15 @@ do
                 }, null, 2)")
 
     contract_json=$(node -p "JSON.stringify({...require('./tmp.json').contract, 
-                    id: '3c349abe-4d70-4f50-9fa6-018f1f2530ab', \
+                    id: '${contract_id}', \
                     bin_path: '/usr/bin/node', \
                     bin_args: 'index.js', \
                     environment: {}, \
                     consensus: { \
                         ...require('./tmp.json').contract.consensus, \
                         mode: 'public', \
-                        roundtime: $roundtime, \
-                        threshold: 60 \
+                        roundtime: ${roundtime}, \
+                        threshold: ${threshold} \
                     }, \
                     npl: { \
                         mode: 'public' \
@@ -120,13 +141,12 @@ do
                 mesh: ${mesh_json},\
                 user: ${user_json}, \
                 log: ${log_json}, \
-            }, null, 2)" > hp.cfg
+            }, null, 2)" >hp.cfg
     rm tmp.json
 
-    popd > /dev/null 2>&1
+    let pubkey=$(jq -r '.node.public_key' hp.cfg)
+    popd >/dev/null 2>&1
 
-    # Copy the contract files.
-    # eval "cp -r $copyfiles ./node$n/contract_fs/seed/state/"
 done
 
 # Function to generate JSON array string while skiping a given index.
@@ -137,21 +157,17 @@ function joinarr {
 
     let prevlast=$ncount-2
     # Resetting prevlast if nothing is given to skip.
-    if [ $skip -lt 0 ]
-    then
+    if [ $skip -lt 0 ]; then
         let prevlast=prevlast+1
     fi
 
     j=0
     str="["
-    for (( i=0; i<$ncount; i++ ))
-    do
-        if [ "$i" != "$skip" ]
-        then
+    for ((i = 0; i < $ncount; i++)); do
+        if [ "$i" != "$skip" ]; then
             str="$str'${arr[i]}'"
-            
-            if [ $j -lt $prevlast ]
-            then
+
+            if [ $j -lt $prevlast ]; then
                 str="$str,"
             fi
             let j=j+1
@@ -163,43 +179,43 @@ function joinarr {
 }
 
 # Loop through all nodes hp.cfg and inject peer and unl lists (skip self node for peers).
-for (( j=0; j<$ncount; j++ ))
-do
+for ((j = 0; j < $ncount; j++)); do
     let n=$j+1
     mypeers=$(joinarr peers $j)
     # Skip param is passed as -1 to stop skipping self pubkey.
     myunl=$(joinarr pubkeys -1)
 
-    pushd ./node$n/cfg > /dev/null 2>&1
-    mv hp.cfg tmp.json  # nodejs needs file extension to be .json
+    pushd ./node$n/cfg >/dev/null 2>&1
+    mv hp.cfg tmp.json # nodejs needs file extension to be .json
     contract_json=$(node -p "JSON.stringify({...require('./tmp.json').contract, unl:${myunl}}, null, 2)")
     mesh_json=$(node -p "JSON.stringify({...require('./tmp.json').mesh, known_peers:${mypeers}}, null, 2)")
-    node -p "JSON.stringify({...require('./tmp.json'), contract:${contract_json}, mesh:${mesh_json}}, null, 2)" > hp.cfg
+    node -p "JSON.stringify({...require('./tmp.json'), contract:${contract_json}, mesh:${mesh_json}}, null, 2)" >hp.cfg
     rm tmp.json
-    popd > /dev/null 2>&1
+    popd >/dev/null 2>&1
 done
 
 # Setup initial state data for all nodes.
-for (( i=1; i<=$ncount; i++ ))
-do
+for ((i = 1; i <= $ncount; i++)); do
 
-    mkdir -p ./node$i/contract_fs/seed/ > /dev/null 2>&1
+    mkdir -p ./node$i/contract_fs/seed/ >/dev/null 2>&1
 
-    pushd ./node$i/contract_fs/seed/state/ > /dev/null 2>&1
+    pushd ./node$i/contract_fs/seed/state/ >/dev/null 2>&1
 
     # Copy any more initial state files for testing.
     # cp ~/my_big_file .
 
-    popd > /dev/null 2>&1
+    popd >/dev/null 2>&1
 
 done
 
-popd > /dev/null 2>&1
+popd >/dev/null 2>&1
 
-# Create docker virtual network named 'hpnet'
+# Create docker virtual network named 'repnet'
 # All nodes will communicate with each other via this network.
-docker network rm hpnet > /dev/null 2>&1
-docker network create --driver=bridge --subnet=$iprange.0/24 --gateway=$iprange.254 hpnet > /dev/null 2>&1
+docker network rm repnet >/dev/null 2>&1
+docker network create --driver=bridge --subnet=$iprange.0/24 --gateway=$iprange.254 repnet >/dev/null 2>&1
+
+popd >/dev/null 2>&1
 
 echo "Cluster generated at ${clusterloc}"
 echo "Use \"./cluster-start.sh <nodeid>\" to run each node."

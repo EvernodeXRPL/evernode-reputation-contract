@@ -15,7 +15,7 @@ fi
 clusterloc=$(pwd)/repcluster
 n=$1
 iprange="172.1.2"
-repimage="evernodedev/reputation:hp.latest-ubt.20.04"
+repimage="evernodedev/reputation-port:hp.latest-ubt.20.04"
 
 let pubport=8080+$n
 let peerport=22860+$n

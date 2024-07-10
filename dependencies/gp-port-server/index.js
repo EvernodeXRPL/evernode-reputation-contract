@@ -1,5 +1,6 @@
 const WebSocket = require('ws');
 const https = require('https');
+const dgram = require('dgram');
 const fs = require('fs');
 const crypto = require('node:crypto');
 
@@ -30,15 +31,15 @@ function getShaHash(input) {
   return crypto.createHash('sha512').update(buf).digest('hex');
 }
 
-[...tcpPortList, ...udpPortList].map((port) => {
+tcpPortList.map((port) => {
   const serverAddr = `wss://${domain}:${port}`
 
   function logInf(...args) {
-    console.log(`[GPServer] ${serverAddr} -`, ...args);
+    console.log(`[GPTCPServer] ${serverAddr} -`, ...args);
   }
 
   function logErr(...args) {
-    console.error(`[GPServer] ${serverAddr} -`, ...args);
+    console.error(`[GPTCPServer] ${serverAddr} -`, ...args);
   }
 
   const server = https.createServer(serverOptions);
@@ -49,7 +50,7 @@ function getShaHash(input) {
     ws.close();
   }
 
-  ws.on('connection', function connection(ws) {
+  ws.on('connection', (ws) => {
     logInf('Client connected');
 
     ws.on('message', (message) => {
@@ -68,9 +69,65 @@ function getShaHash(input) {
     });
   });
 
-  server.listen(port, () => {
+  server.on('close', () => {
+    logInf('Server terminated');
+  });
+
+  server.on('error', (error) => {
+    logErr('Error:', error);
+  });
+
+  server.on('listening', () => {
     logInf('GP port evaluation server is running...');
   });
+
+  server.listen(port);
+
+  process.on('SIGINT', function () {
+    terminate();
+  });
+});
+
+udpPortList.map((port) => {
+  const serverAddr = `wss://${domain}:${port}`
+
+  function logInf(...args) {
+    console.log(`[GPUDPServer] ${serverAddr} -`, ...args);
+  }
+
+  function logErr(...args) {
+    console.error(`[GPUDPServer] ${serverAddr} -`, ...args);
+  }
+
+  const server = dgram.createSocket('udp4');
+
+  const terminate = () => {
+    server.close();
+  }
+
+  server.on('message', (message, rinfo) => {
+    logInf('Received:', message.toString());
+    // Do the pow and send result back to the client.
+    const res = pow(message);
+    server.send(res, rinfo.port, rinfo.address, (error) => {
+      if (error)
+        logErr('Send error:', error);
+    });
+  });
+
+  server.on('close', () => {
+    logInf('Server terminated');
+  });
+
+  server.on('error', (error) => {
+    logErr('Error:', error);
+  });
+
+  server.on('listening', () => {
+    logInf('GP port evaluation server is running...');
+  });
+
+  server.bind(port);
 
   process.on('SIGINT', function () {
     terminate();

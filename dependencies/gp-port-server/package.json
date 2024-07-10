@@ -10,9 +10,10 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "crypto": "^1.0.1",
-    "fs": "^0.0.1-security",
+    "crypto": "1.0.1",
+    "dgram": "1.0.1",
+    "fs": "0.0.1-security",
     "https": "1.0.0",
-    "ws": "^8.17.1"
+    "ws": "8.17.1"
   }
 }

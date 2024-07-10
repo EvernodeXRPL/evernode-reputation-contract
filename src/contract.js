@@ -2,6 +2,7 @@ const HotPocket = require('hotpocket-nodejs-contract');
 const sodium = require('libsodium-wrappers-sumo');
 const fs = require('fs');
 const crypto = require('node:crypto');
+const dgram = require('dgram');
 const WebSocket = require('ws');
 
 const INSTANCE_INFO_FILE = "../../../../instance.json";
@@ -186,95 +187,171 @@ const evaluateInstancePorts = async (instanceInfo, ctx) => {
 
     const tcpPortList = instanceInfo?.gp_tcp_port ? [parseInt(instanceInfo.gp_tcp_port), parseInt(instanceInfo.gp_tcp_port) + 1] : [];
     const udpPortList = instanceInfo?.gp_udp_port ? [parseInt(instanceInfo.gp_udp_port), parseInt(instanceInfo.gp_udp_port) + 1] : [];
-    const portsToEval = [...tcpPortList, ...udpPortList];
 
-    if (!portsToEval.length)
+    if (!tcpPortList.length && !udpPortList.length)
         return 0;
 
     const domain = instanceInfo.domain;
 
     let score = 0;
 
-    await Promise.all(portsToEval.map(async (port) => {
-        await new Promise((resolve, reject) => {
-            console.log(`Evaluating ports on instance: ${instanceInfo.pubkey}`);
+    await Promise.all([
+        Promise.all(tcpPortList.map(async (port) => {
+            await new Promise((resolve, reject) => {
+                console.log(`Evaluating ports on instance: ${instanceInfo.pubkey}`);
 
-            const url = `wss://${domain}:${port}`;
+                const url = `wss://${domain}:${port}`;
 
-            function logInf(...args) {
-                console.log(`[GPClient] ${url} -`, ...args);
-            }
-
-            function logErr(...args) {
-                console.error(`[GPClient] ${url} -`, ...args);
-            }
-
-            logInf('Evaluating GP port');
-
-            const connection = new WebSocket(url, {
-                rejectUnauthorized: false
-            });
-
-            const terminate = () => {
-                connection.close();
-                connection.removeAllListeners();
-                connection.terminate();
-            }
-
-            let completed = false;
-            function handleResolve(...args) {
-                terminate();
-                if (!completed) {
-                    if ((args?.length ?? 0) > 0)
-                        logInf(...args);
-                    resolve(args?.length ? args[0] : null);
-                    completed = true;
+                function logInf(...args) {
+                    console.log(`[GPTCPClient] ${url} -`, ...args);
                 }
-            }
 
-            function handleReject(...args) {
-                terminate();
-                if (!completed) {
-                    if ((args?.length ?? 0) > 0)
-                        logErr(...args);
-                    reject(args?.length ? args[0] : null);
-                    completed = true;
+                function logErr(...args) {
+                    console.error(`[GPTCPClient] ${url} -`, ...args);
                 }
-            }
 
-            connection.onopen = () => {
-                logInf('Connected to the WebSocket server');
+                logInf('Evaluating GP port');
 
+                const connection = new WebSocket(url, {
+                    rejectUnauthorized: false
+                });
+
+                const terminate = () => {
+                    connection.close();
+                    connection.removeAllListeners();
+                    connection.terminate();
+                }
+
+                let completed = false;
+                function handleResolve(...args) {
+                    terminate();
+                    if (!completed) {
+                        if ((args?.length ?? 0) > 0)
+                            logInf(...args);
+                        resolve(args?.length ? args[0] : null);
+                        completed = true;
+                    }
+                }
+
+                function handleReject(...args) {
+                    terminate();
+                    if (!completed) {
+                        if ((args?.length ?? 0) > 0)
+                            logErr(...args);
+                        reject(args?.length ? args[0] : null);
+                        completed = true;
+                    }
+                }
+
+                connection.onopen = () => {
+                    logInf('Connected to the WebSocket server');
+
+                    // Send a evaluation message to the peer instance
+                    logInf('Sending:', evalMessage);
+                    connection.send(evalMessage);
+                };
+
+                connection.onmessage = (event) => {
+                    const message = event.data.toString();
+                    logInf('Received:', message);
+                    // Evaluate the received message and increment score.
+                    score += evaluatePortEvalMessage(instanceInfo, ctx, message);
+                    handleResolve();
+                };
+
+                connection.onerror = (error) => {
+                    handleReject('WebSocket error:', error);
+                };
+
+                connection.onclose = () => {
+                    handleReject('Disconnected from the WebSocket server');
+                };
+
+                process.on('SIGINT', function () {
+                    handleReject('SIGINT received');
+                });
+
+                setTimeout(() => {
+                    handleReject(`Max timeout ${PORT_EVAL_TIMEOUT} reached`);
+                }, PORT_EVAL_TIMEOUT);
+            }).catch(console.error);
+        })),
+        Promise.all(udpPortList.map(async (port) => {
+            await new Promise((resolve, reject) => {
+                console.log(`Evaluating ports on instance: ${instanceInfo.pubkey}`);
+
+                const url = `wss://${domain}:${port}`;
+
+                function logInf(...args) {
+                    console.log(`[GPUDPClient] ${url} -`, ...args);
+                }
+
+                function logErr(...args) {
+                    console.error(`[GPUDPClient] ${url} -`, ...args);
+                }
+
+                logInf('Evaluating GP port');
+
+                const connection = dgram.createSocket('udp4');
+
+                const terminate = () => {
+                    connection.close();
+                    connection.removeAllListeners();
+                }
+
+                let completed = false;
+                function handleResolve(...args) {
+                    if (!completed) {
+                        terminate();
+                        if ((args?.length ?? 0) > 0)
+                            logInf(...args);
+                        resolve(args?.length ? args[0] : null);
+                        completed = true;
+                    }
+                }
+
+                function handleReject(...args) {
+                    if (!completed) {
+                        terminate();
+                        if ((args?.length ?? 0) > 0)
+                            logErr(...args);
+                        reject(args?.length ? args[0] : null);
+                        completed = true;
+                    }
+                }
                 // Send a evaluation message to the peer instance
                 logInf('Sending:', evalMessage);
-                connection.send(evalMessage);
-            };
+                connection.send(evalMessage, port, domain, (error) => {
+                    if (error)
+                        handleReject('Send error:', error);
+                });
 
-            connection.onmessage = (event) => {
-                const message = event.data.toString();
-                logInf('Received:', message);
-                // Evaluate the received message and increment score.
-                score += evaluatePortEvalMessage(instanceInfo, ctx, message);
-                handleResolve();
-            };
+                connection.on('message', (message, rinfo) => {
+                    const msg = message.toString();
+                    logInf('Received:', msg);
+                    // Evaluate the received message and increment score.
+                    score += evaluatePortEvalMessage(instanceInfo, ctx, msg);
+                    handleResolve();
+                });
 
-            connection.onerror = (error) => {
-                handleReject('WebSocket error:', error);
-            };
+                connection.on('error', (error) => {
+                    handleReject('WebSocket error:', error);
+                });
 
-            connection.onclose = () => {
-                handleReject('Disconnected from the WebSocket server');
-            };
+                connection.on('close', () => {
+                    handleReject('Disconnected from the WebSocket server');
+                });
 
-            process.on('SIGINT', function () {
-                handleReject('SIGINT received');
-            });
+                process.on('SIGINT', function () {
+                    handleReject('SIGINT received');
+                });
 
-            setTimeout(() => {
-                handleReject(`Max timeout ${PORT_EVAL_TIMEOUT} reached`);
-            }, PORT_EVAL_TIMEOUT);
-        }).catch(console.error);
-    }));
+                setTimeout(() => {
+                    handleReject(`Max timeout ${PORT_EVAL_TIMEOUT} reached`);
+                }, PORT_EVAL_TIMEOUT);
+            }).catch(console.error);
+        }))
+    ]);
 
     return score;
 }
@@ -375,7 +452,7 @@ const evaluatePorts = async (ctx) => {
 
         // TODO: Forcefully terminate if ws connection hangs.
         const subUniverse = JSON.parse(fs.readFileSync(PORT_EVAL_UNIVERSE_FILE));
-        await Promise.all(subUniverse.filter(k => k !== ctx.publicKey).map(async k => {
+        await Promise.all(subUniverse.map(async k => {
             const score = await evaluateInstancePorts(clusterInfo[k], ctx).catch(console.error);
             if (!port_ops[k])
                 port_ops[k] = score;
@@ -411,8 +488,8 @@ const myContract = async (ctx) => {
                 const req = JSON.parse(message);
 
                 if (req.command === 'read_scores') {
-                    user.send({ message: output });
                     const output = fs.existsSync(RESOURCE_OPT_FILE) ? JSON.parse(fs.readFileSync(RESOURCE_OPT_FILE).toString()) : null;
+                    user.send({ message: output });
                 }
             }
         }

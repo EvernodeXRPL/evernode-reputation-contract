@@ -184,8 +184,8 @@ const evaluateInstancePorts = async (instanceInfo, ctx) => {
 
     const evalMessage = preparePortEvalMessage(instanceInfo, ctx);
 
-    const tcpPortList = instanceInfo ? [instanceInfo.gp_tcp_port, instanceInfo.gp_tcp_port + 1] : [];
-    const udpPortList = instanceInfo ? [instanceInfo.gp_udp_port, instanceInfo.gp_udp_port + 1] : [];
+    const tcpPortList = instanceInfo?.gp_tcp_port ? [parseInt(instanceInfo.gp_tcp_port), parseInt(instanceInfo.gp_tcp_port) + 1] : [];
+    const udpPortList = instanceInfo?.gp_udp_port ? [parseInt(instanceInfo.gp_udp_port), parseInt(instanceInfo.gp_udp_port) + 1] : [];
     const portsToEval = [...tcpPortList, ...udpPortList];
 
     if (!portsToEval.length)
@@ -211,7 +211,9 @@ const evaluateInstancePorts = async (instanceInfo, ctx) => {
 
             logInf('Evaluating GP port');
 
-            const connection = new WebSocket(url);
+            const connection = new WebSocket(url, {
+                rejectUnauthorized: false
+            });
 
             const terminate = () => {
                 connection.close();

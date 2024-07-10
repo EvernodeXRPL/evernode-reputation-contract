@@ -170,11 +170,11 @@ async function pow(lgrhex, pubkeyhex) {
 }
 
 const preparePortEvalMessage = (instanceInfo, ctx) => {
-    return `${ctx.lclHash}${instanceInfo.pubkey}`;
+    return ctx.lclHash;
 }
 
 const evaluatePortEvalMessage = (instanceInfo, ctx, message) => {
-    const evalMessage = preparePortEvalMessage(instanceInfo, ctx);
+    const evalMessage = getShaHash(`${ctx.lclHash}${instanceInfo.pubkey}`);
     return message == evalMessage ? 1 : 0;
 }
 

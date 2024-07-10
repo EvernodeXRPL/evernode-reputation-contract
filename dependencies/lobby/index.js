@@ -4,8 +4,8 @@ const fs = require('fs');
 const WebSocket = require('ws');
 
 const CONTRACT_PATH = "/contract";
-const INIT_FLAG = "/init.flag";
-const INSTANCE_INFO_FILE = "/instance.json";
+const INIT_FLAG = `${CONTRACT_PATH}/init.flag`;
+const INSTANCE_INFO_FILE = `${CONTRACT_PATH}/instance.json`;
 
 function readHpCfg() {
     return JSON.parse(fs.readFileSync(`${CONTRACT_PATH}/cfg/hp.cfg`));

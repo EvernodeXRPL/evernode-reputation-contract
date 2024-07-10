@@ -79,10 +79,10 @@ for ((i = 0; i < $ncount; i++)); do
     node -p "JSON.stringify({\
                 pubkey: '${pubkey}',\
                 contract_id: '${contract_id}',\
-                peer_port: ${peerport}, \
-                user_port: ${pubport}, \
-                gp_tcp_port: ${gptcpport}, \
-                gp_udp_port: ${gpudpport}, \
+                peer_port: '${peerport}', \
+                user_port: '${pubport}', \
+                gp_tcp_port: '${gptcpport}', \
+                gp_udp_port: '${gpudpport}', \
                 domain: '$iprange.${n}'
             }, null, 2)" >./node$n/instance.json
 

@@ -11,8 +11,8 @@ if (fs.existsSync(INSTANCE_INFO_FILE))
   instanceInfo = JSON.parse(fs.readFileSync(INSTANCE_INFO_FILE));
 
 let pubkey = instanceInfo.pubkey;
-const tcpPortList = instanceInfo ? [instanceInfo.gp_tcp_port, instanceInfo.gp_tcp_port + 1] : [];
-const udpPortList = instanceInfo ? [instanceInfo.gp_udp_port, instanceInfo.gp_udp_port + 1] : [];
+const tcpPortList = instanceInfo?.gp_tcp_port ? [parseInt(instanceInfo.gp_tcp_port), parseInt(instanceInfo.gp_tcp_port) + 1] : [];
+const udpPortList = instanceInfo?.gp_udp_port ? [parseInt(instanceInfo.gp_udp_port), parseInt(instanceInfo.gp_udp_port) + 1] : [];
 const domain = instanceInfo.domain;
 
 const serverOptions = {

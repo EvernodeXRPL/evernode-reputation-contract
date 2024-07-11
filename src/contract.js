@@ -510,12 +510,12 @@ const myContract = async (ctx) => {
 
                     if (resourceOutput != null) {
                         for (const [key, value] of Object.entries(resourceOutput)) {
-                            output[key] = { resource: (value / execInfo.count), port: 0 };
+                            output[key] = { resource: execInfo?.count ? (value / execInfo.count) : 0, port: 0 };
                         }
                     }
                     if (portOutput != null) {
                         for (const [key, value] of Object.entries(portOutput)) {
-                            const score = (value.numerator / value.denominator);
+                            const score = value?.denominator ? (value.numerator / value.denominator) : 0;
                             if (!output[key])
                                 output[key] = { resource: 0, port: score };
                             else

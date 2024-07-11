@@ -7,8 +7,9 @@ const WebSocket = require('ws');
 
 const INSTANCE_INFO_FILE = "../../../../instance.json";
 const CLUSTER_INFO_FILE = '../cluster.json';
-const RESOURCE_OPT_FILE = "../resource_opinion.txt";
-const PORT_OPT_FILE = "../port_opinion.txt";
+const RESOURCE_OPT_FILE = "../resource_opinion.json";
+const PORT_OPT_FILE = "../port_opinion.json";
+const EXEC_INFO_FILE = "../exec_info.json";
 const FILE_PATH = '../rep_hash.dat';
 const PORT_EVAL_UNIVERSE_FILE = '../port_eval_universe.json';
 const TOTAL_FILE_SIZE = Math.floor(1.5 * 1024 * 1024 * 1024);
@@ -17,6 +18,9 @@ const CHUNK_SIZE = 1024 * 1024;
 const PORT_EVAL_LEDGER_INTERVAL = 5;
 const PORT_EVAL_UNIVERSE_SIZE = 6;
 const PORT_EVAL_TIMEOUT = 5000;
+const PORT_EVAL_DENOMINATOR_INCR = 4;
+const SCORE_AVG_BASE = 30;
+const RESOURCE_SCORE_CONSIDERATION = 0.75;
 
 const NUM_HASHES = TOTAL_FILE_SIZE / WRITE_INTERVAL;
 
@@ -180,9 +184,6 @@ const evaluatePortEvalMessage = (instanceInfo, ctx, message) => {
 }
 
 const evaluateInstancePorts = async (instanceInfo, ctx) => {
-    if (!instanceInfo)
-        return 0;
-
     const evalMessage = preparePortEvalMessage(instanceInfo, ctx);
 
     const tcpPortList = instanceInfo?.gp_tcp_port ? [parseInt(instanceInfo.gp_tcp_port), parseInt(instanceInfo.gp_tcp_port) + 1] : [];
@@ -425,7 +426,7 @@ const evaluateResources = async (ctx) => {
                 console.log("Updating resource opinion file:");
                 console.log(JSON.stringify(res_ops, null, 2));
 
-                fs.writeFileSync(RESOURCE_OPT_FILE, JSON.stringify(res_ops));
+                fs.writeFileSync(RESOURCE_OPT_FILE, JSON.stringify(res_ops, null, 2));
                 console.log("Resource opinion file updated successfully.");
 
                 return resolve();
@@ -452,18 +453,20 @@ const evaluatePorts = async (ctx) => {
 
         // TODO: Forcefully terminate if ws connection hangs.
         const subUniverse = JSON.parse(fs.readFileSync(PORT_EVAL_UNIVERSE_FILE));
-        await Promise.all(subUniverse.map(async k => {
-            const score = await evaluateInstancePorts(clusterInfo[k], ctx).catch(console.error);
+        await Promise.all(subUniverse.filter(k => clusterInfo[k]).map(async k => {
+            const score = await evaluateInstancePorts(clusterInfo[k], ctx).catch(console.error) ?? 0;
             if (!port_ops[k])
-                port_ops[k] = score;
-            else
-                port_ops[k] += score;
+                port_ops[k] = { numerator: score, denominator: PORT_EVAL_DENOMINATOR_INCR };
+            else {
+                port_ops[k].numerator += score;
+                port_ops[k].denominator += PORT_EVAL_DENOMINATOR_INCR;
+            }
         }));
 
         console.log("Updating port opinion file:");
         console.log(JSON.stringify(port_ops, null, 2));
 
-        fs.writeFileSync(PORT_OPT_FILE, JSON.stringify(port_ops));
+        fs.writeFileSync(PORT_OPT_FILE, JSON.stringify(port_ops, null, 2));
         console.log("Port opinion file updated successfully.");
     }
 
@@ -477,8 +480,21 @@ const evaluatePorts = async (ctx) => {
     }
 }
 
+const writeExecInfo = (info) => {
+    fs.writeFileSync(EXEC_INFO_FILE, JSON.stringify(info, null, 2));
+}
+
+const readExecInfo = () => {
+    let info = { count: 0 };
+    if (fs.existsSync(EXEC_INFO_FILE))
+        info = JSON.parse(fs.readFileSync(EXEC_INFO_FILE));
+    return info;
+}
+
 const myContract = async (ctx) => {
     if (ctx.readonly) {
+        const execInfo = readExecInfo();
+
         for (const user of ctx.users.list()) {
             // Loop through inputs sent by each user.
             for (const input of user.inputs) {
@@ -488,17 +504,45 @@ const myContract = async (ctx) => {
                 const req = JSON.parse(message);
 
                 if (req.command === 'read_scores') {
-                    const output = fs.existsSync(RESOURCE_OPT_FILE) ? JSON.parse(fs.readFileSync(RESOURCE_OPT_FILE).toString()) : null;
+                    let resourceOutput = fs.existsSync(RESOURCE_OPT_FILE) ? JSON.parse(fs.readFileSync(RESOURCE_OPT_FILE).toString()) : null;
+                    let portOutput = fs.existsSync(PORT_OPT_FILE) ? JSON.parse(fs.readFileSync(PORT_OPT_FILE).toString()) : null;
+                    let output = {};
+
+                    if (resourceOutput != null) {
+                        for (const [key, value] of Object.entries(resourceOutput)) {
+                            output[key] = { resource: (value / execInfo.count), port: 0 };
+                        }
+                    }
+                    if (portOutput != null) {
+                        for (const [key, value] of Object.entries(portOutput)) {
+                            const score = (value.numerator / value.denominator);
+                            if (!output[key])
+                                output[key] = { resource: 0, port: score };
+                            else
+                                output[key].port = score;
+                        }
+                    }
+                    for (const [key, value] of Object.entries(output))
+                        output[key] = Math.round(((value.resource * RESOURCE_SCORE_CONSIDERATION) + (value.port * (1 - RESOURCE_SCORE_CONSIDERATION))) * SCORE_AVG_BASE);
                     user.send({ message: output });
                 }
             }
         }
         return;
     }
+    else {
+        let execInfo = readExecInfo();
+        execInfo.count++;
 
-    await Promise.all([evaluateResources(ctx).catch(console.error), evaluatePorts(ctx).catch(console.error)]);
-    console.log('Terminating the contract');
-    process.kill(process.pid, 'SIGKILL');
+        await Promise.all([evaluateResources(ctx).catch(console.error), evaluatePorts(ctx).catch(console.error)]);
+
+        // Update exec info.
+        writeExecInfo(execInfo);
+
+        console.log('Terminating the contract');
+        process.kill(process.pid, 'SIGKILL');
+    }
+
 };
 
 const hpc = new HotPocket.Contract();

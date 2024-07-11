@@ -524,11 +524,10 @@ const myContract = async (ctx) => {
                     }
                     for (const [key, value] of Object.entries(output))
                         output[key] = Math.round(((value.resource * RESOURCE_SCORE_CONSIDERATION) + (value.port * (1 - RESOURCE_SCORE_CONSIDERATION))) * SCORE_AVG_BASE);
-                    user.send({ message: output });
+                    user.send({ message: Object.keys(output).length ? output : null });
                 }
             }
         }
-        return;
     }
     else {
         let execInfo = readExecInfo();
@@ -538,11 +537,10 @@ const myContract = async (ctx) => {
 
         // Update exec info.
         writeExecInfo(execInfo);
-
-        console.log('Terminating the contract');
-        process.kill(process.pid, 'SIGKILL');
     }
 
+    console.log('Terminating the contract');
+    process.kill(process.pid, 'SIGKILL');
 };
 
 const hpc = new HotPocket.Contract();

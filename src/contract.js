@@ -5,6 +5,9 @@ const crypto = require('node:crypto');
 const dgram = require('dgram');
 const WebSocket = require('ws');
 
+const HP_LOG_FILE = "../../../../log/hp.log";
+const CONTRACT_OUT_FILE = "../../../../log/contract/rw.stdout.log";
+const CONTRACT_ERR_FILE = "../../../../log/contract/rw.stderr.log";
 const INSTANCE_INFO_FILE = "../../../../instance.json";
 const CLUSTER_INFO_FILE = '../cluster.json';
 const RESOURCE_OPT_FILE = "../resource_opinion.json";
@@ -17,8 +20,8 @@ const WRITE_INTERVAL = 1 * 512 * 1024;
 const CHUNK_SIZE = 1024 * 1024;
 const PORT_EVAL_LEDGER_INTERVAL = 5;
 const PORT_EVAL_UNIVERSE_SIZE = 6;
-const PORT_EVAL_TIMEOUT = 5000;
-const PORT_EVAL_DENOMINATOR_INCR = 4;
+const PORT_EVAL_TIMEOUT = 15000;
+const PORT_EVAL_COUNT = 4;
 const SCORE_AVG_BASE = 30;
 const RESOURCE_SCORE_CONSIDERATION = 0.75;
 
@@ -196,10 +199,11 @@ const evaluateInstancePorts = async (instanceInfo, ctx) => {
 
     let score = 0;
 
+    console.log(`Evaluating ports on instance: ${instanceInfo.pubkey}`);
+
     await Promise.all([
         Promise.all(tcpPortList.map(async (port) => {
             await new Promise((resolve, reject) => {
-                console.log(`Evaluating ports on instance: ${instanceInfo.pubkey}`);
 
                 const url = `wss://${domain}:${port}`;
 
@@ -218,15 +222,15 @@ const evaluateInstancePorts = async (instanceInfo, ctx) => {
                 });
 
                 const terminate = () => {
+                    if (!connection.OPEN)
+                        return;
                     connection.close();
-                    connection.removeAllListeners();
-                    connection.terminate();
                 }
 
                 let completed = false;
                 function handleResolve(...args) {
-                    terminate();
                     if (!completed) {
+                        terminate();
                         if ((args?.length ?? 0) > 0)
                             logInf(...args);
                         resolve(args?.length ? args[0] : null);
@@ -235,8 +239,8 @@ const evaluateInstancePorts = async (instanceInfo, ctx) => {
                 }
 
                 function handleReject(...args) {
-                    terminate();
                     if (!completed) {
+                        terminate();
                         if ((args?.length ?? 0) > 0)
                             logErr(...args);
                         reject(args?.length ? args[0] : null);
@@ -268,10 +272,6 @@ const evaluateInstancePorts = async (instanceInfo, ctx) => {
                     handleReject('Disconnected from the WebSocket server');
                 };
 
-                process.on('SIGINT', function () {
-                    handleReject('SIGINT received');
-                });
-
                 setTimeout(() => {
                     handleReject(`Max timeout ${PORT_EVAL_TIMEOUT} reached`);
                 }, PORT_EVAL_TIMEOUT);
@@ -279,7 +279,6 @@ const evaluateInstancePorts = async (instanceInfo, ctx) => {
         })),
         Promise.all(udpPortList.map(async (port) => {
             await new Promise((resolve, reject) => {
-                console.log(`Evaluating ports on instance: ${instanceInfo.pubkey}`);
 
                 const url = `wss://${domain}:${port}`;
 
@@ -296,8 +295,9 @@ const evaluateInstancePorts = async (instanceInfo, ctx) => {
                 const connection = dgram.createSocket('udp4');
 
                 const terminate = () => {
+                    if (!connection.OPEN)
+                        return;
                     connection.close();
-                    connection.removeAllListeners();
                 }
 
                 let completed = false;
@@ -341,10 +341,6 @@ const evaluateInstancePorts = async (instanceInfo, ctx) => {
 
                 connection.on('close', () => {
                     handleReject('Disconnected from the WebSocket server');
-                });
-
-                process.on('SIGINT', function () {
-                    handleReject('SIGINT received');
                 });
 
                 setTimeout(() => {
@@ -456,10 +452,10 @@ const evaluatePorts = async (ctx) => {
         await Promise.all(subUniverse.filter(k => clusterInfo[k]).map(async k => {
             const score = await evaluateInstancePorts(clusterInfo[k], ctx).catch(console.error) ?? 0;
             if (!port_ops[k])
-                port_ops[k] = { numerator: score, denominator: PORT_EVAL_DENOMINATOR_INCR };
+                port_ops[k] = { numerator: score, denominator: PORT_EVAL_COUNT };
             else {
                 port_ops[k].numerator += score;
-                port_ops[k].denominator += PORT_EVAL_DENOMINATOR_INCR;
+                port_ops[k].denominator += PORT_EVAL_COUNT;
             }
         }));
 
@@ -525,6 +521,20 @@ const myContract = async (ctx) => {
                     for (const [key, value] of Object.entries(output))
                         output[key] = Math.round(((value.resource * RESOURCE_SCORE_CONSIDERATION) + (value.port * (1 - RESOURCE_SCORE_CONSIDERATION))) * SCORE_AVG_BASE);
                     user.send({ message: Object.keys(output).length ? output : null });
+                }
+                else if (req.command === 'read_logs') {
+                    const hpLog = fs.existsSync(HP_LOG_FILE) ? fs.readFileSync(HP_LOG_FILE).toString() : null;
+                    const contractOutLog = fs.existsSync(CONTRACT_OUT_FILE) ? fs.readFileSync(CONTRACT_OUT_FILE).toString() : null;
+                    const contractErrLog = fs.existsSync(CONTRACT_ERR_FILE) ? fs.readFileSync(CONTRACT_ERR_FILE).toString() : null;
+                    user.send({
+                        message: {
+                            hp: hpLog,
+                            contract: {
+                                out: contractOutLog,
+                                err: contractErrLog
+                            }
+                        }
+                    });
                 }
             }
         }

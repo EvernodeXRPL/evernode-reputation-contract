@@ -23,7 +23,7 @@ const PORT_EVAL_UNIVERSE_SIZE = 6;
 const PORT_EVAL_TIMEOUT = 15000;
 const PORT_EVAL_COUNT = 4;
 const SCORE_AVG_BASE = 30;
-const RESOURCE_SCORE_CONSIDERATION = 0.75;
+const RESOURCE_SCORE_WEIGHT = 0.75;
 
 const NUM_HASHES = TOTAL_FILE_SIZE / WRITE_INTERVAL;
 
@@ -519,8 +519,15 @@ const myContract = async (ctx) => {
                         }
                     }
                     for (const [key, value] of Object.entries(output))
-                        output[key] = Math.round(((value.resource * RESOURCE_SCORE_CONSIDERATION) + (value.port * (1 - RESOURCE_SCORE_CONSIDERATION))) * SCORE_AVG_BASE);
-                    user.send({ message: Object.keys(output).length ? output : null });
+                        output[key] = Math.round(((value.resource * RESOURCE_SCORE_WEIGHT) + (value.port * (1 - RESOURCE_SCORE_WEIGHT))) * SCORE_AVG_BASE);
+
+                    if (!Object.keys(output).length) {
+                        console.error(`No scores recorded.`);
+                        user.send({ message: null });
+                    }
+                    else {
+                        user.send({ message: { scores: output, execCount: (execInfo?.count ?? 0) } });
+                    }
                 }
                 else if (req.command === 'read_logs') {
                     const hpLog = fs.existsSync(HP_LOG_FILE) ? fs.readFileSync(HP_LOG_FILE).toString() : null;

@@ -102,7 +102,7 @@ function getHashOfFile(filePath) {
             const hash = crypto.createHash('sha512');
 
             fileStream.on('data', (chunk) => {
-                hash.update(chunk); hash
+                hash.update(chunk);
             });
 
             fileStream.on('end', () => {

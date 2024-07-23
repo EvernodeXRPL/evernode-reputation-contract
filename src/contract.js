@@ -14,7 +14,7 @@ const RESOURCE_OPT_FILE = "../resource_opinion.json";
 const PORT_OPT_FILE = "../port_opinion.json";
 const EXEC_INFO_FILE = "../exec_info.json";
 const FILE_PATH = '../rep_hash.dat';
-const PORT_EVAL_UNIVERSE_FILE = '../port_eval_universe.json';
+const PORT_EVAL_UNL_SHUFFLE_FILE = './port_eval_unl_shuffle.json';
 const TOTAL_FILE_SIZE = Math.floor(1.5 * 1024 * 1024 * 1024);
 const WRITE_INTERVAL = 1 * 512 * 1024;
 const CHUNK_SIZE = 1024 * 1024;
@@ -434,6 +434,17 @@ const evaluateResources = async (ctx) => {
     });
 }
 
+const getPortEvalSubUniverse = (ctx) => {
+    if (fs.existsSync(PORT_EVAL_UNL_SHUFFLE_FILE)) {
+        const shuffled = JSON.parse(fs.readFileSync(PORT_EVAL_UNL_SHUFFLE_FILE));
+        const index = shuffled.findIndex(p => p === ctx.publicKey);
+        const subUniverseIndex = Math.floor(index / PORT_EVAL_UNIVERSE_SIZE);
+        const subUniverse = shuffled.slice((subUniverseIndex * PORT_EVAL_UNIVERSE_SIZE), ((subUniverseIndex + 1) * PORT_EVAL_UNIVERSE_SIZE));
+        return subUniverse;
+    }
+    return null;
+}
+
 const evaluatePorts = async (ctx) => {
     if (ctx.lclSeqNo < (PORT_EVAL_LEDGER_INTERVAL - 1))
         return;
@@ -442,13 +453,13 @@ const evaluatePorts = async (ctx) => {
     if (fs.existsSync(CLUSTER_INFO_FILE))
         clusterInfo = JSON.parse(fs.readFileSync(CLUSTER_INFO_FILE));
 
-    if (fs.existsSync(PORT_EVAL_UNIVERSE_FILE) && clusterInfo && Object.keys(clusterInfo).length) {
+    const subUniverse = getPortEvalSubUniverse(ctx);
+    if (subUniverse && clusterInfo && Object.keys(clusterInfo).length) {
         let port_ops = {};
         if (fs.existsSync(PORT_OPT_FILE))
             port_ops = JSON.parse(Buffer.from(fs.readFileSync(PORT_OPT_FILE)));
 
         // TODO: Forcefully terminate if ws connection hangs.
-        const subUniverse = JSON.parse(fs.readFileSync(PORT_EVAL_UNIVERSE_FILE));
         await Promise.all(subUniverse.filter(k => clusterInfo[k]).map(async k => {
             const score = await evaluateInstancePorts(clusterInfo[k], ctx).catch(console.error) ?? 0;
             if (!port_ops[k])
@@ -469,10 +480,7 @@ const evaluatePorts = async (ctx) => {
     if (((ctx.lclSeqNo + 1) % PORT_EVAL_LEDGER_INTERVAL) === 0) {
         const unl = ctx.unl.list().map(n => n.publicKey);
         const shuffled = shuffle(unl, ctx.lclSeqNo);
-        const index = shuffled.findIndex(p => p === ctx.publicKey);
-        const subUniverseIndex = Math.floor(index / PORT_EVAL_UNIVERSE_SIZE);
-        const subUniverse = shuffled.slice((subUniverseIndex * PORT_EVAL_UNIVERSE_SIZE), ((subUniverseIndex + 1) * PORT_EVAL_UNIVERSE_SIZE));
-        fs.writeFileSync(PORT_EVAL_UNIVERSE_FILE, JSON.stringify(subUniverse, null, 2));
+        fs.writeFileSync(PORT_EVAL_UNL_SHUFFLE_FILE, JSON.stringify(shuffled, null, 2));
     }
 }
 
@@ -506,20 +514,26 @@ const myContract = async (ctx) => {
 
                     if (resourceOutput != null) {
                         for (const [key, value] of Object.entries(resourceOutput)) {
-                            output[key] = { resource: execInfo?.count ? (value / execInfo.count) : 0, port: 0 };
+                            output[key] = { resource: execInfo?.count ? (value / execInfo.count) : -1, port: -1 };
                         }
                     }
                     if (portOutput != null) {
                         for (const [key, value] of Object.entries(portOutput)) {
-                            const score = value?.denominator ? (value.numerator / value.denominator) : 0;
+                            const score = value?.denominator ? (value.numerator / value.denominator) : -1;
                             if (!output[key])
-                                output[key] = { resource: 0, port: score };
+                                output[key] = { resource: -1, port: score };
                             else
                                 output[key].port = score;
                         }
                     }
-                    for (const [key, value] of Object.entries(output))
-                        output[key] = Math.round(((value.resource * RESOURCE_SCORE_WEIGHT) + (value.port * (1 - RESOURCE_SCORE_WEIGHT))) * SCORE_AVG_BASE);
+                    for (const [key, value] of Object.entries(output)) {
+                        if (value.resource !== -1 && value.port !== -1)
+                            output[key] = Math.round(((value.resource * RESOURCE_SCORE_WEIGHT) + (value.port * (1 - RESOURCE_SCORE_WEIGHT))) * SCORE_AVG_BASE);
+                        else if (value.resource !== -1)
+                            output[key] = Math.round(value.resource * SCORE_AVG_BASE);
+                        else if (value.port !== -1)
+                            output[key] = Math.round((value.port * (1 - RESOURCE_SCORE_WEIGHT)) * SCORE_AVG_BASE);
+                    }
 
                     if (!Object.keys(output).length) {
                         console.error(`No scores recorded.`);

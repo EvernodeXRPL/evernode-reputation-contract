@@ -1,11 +1,11 @@
-import { execSync } from 'child_process';
+const childProcess = require('child_process');
 const https = require('https');
 const fs = require('fs');
 const WebSocket = require('ws');
 const sodium = require('libsodium-wrappers');
 
 const CONTRACT_PATH = "/contract";
-const INIT_FLAG = `${CONTRACT_PATH}/init.flag`;
+const STATUS_FLAG = `${CONTRACT_PATH}/status.flag`;
 const INSTANCE_INFO_FILE = `${CONTRACT_PATH}/instance.json`;
 
 function readHpCfg() {
@@ -16,9 +16,13 @@ function writeHpCfg(cfg) {
     fs.writeFileSync(`${CONTRACT_PATH}/cfg/hp.cfg`, JSON.stringify(cfg, null, 2));
 }
 
+function readInstanceInfo() {
+    return fs.existsSync(INSTANCE_INFO_FILE) ? JSON.parse(fs.readFileSync(INSTANCE_INFO_FILE)) : null;
+}
+
 function updateHpContract(unl, peers) {
     if (fs.existsSync('/deploy')) {
-        const out = execSync(`
+        const out = childProcess.execSync(`
                 rm -rf ${CONTRACT_PATH}/contract_fs/seed/state/bootstrap_contract &&
                 rm -rf ${CONTRACT_PATH}/contract_fs/seed/state/bootstrap_upgrade.sh &&
                 cp /deploy/contract/* ${CONTRACT_PATH}/contract_fs/seed/state/ &&
@@ -51,9 +55,6 @@ function updateHpContract(unl, peers) {
     cfg.mesh.known_peers = peers;
 
     writeHpCfg(cfg);
-
-    console.log('Writing init flag...');
-    fs.writeFileSync(INIT_FLAG, '1');
 }
 
 function writeInstanceDetails(instanceDetails) {
@@ -63,8 +64,10 @@ function writeInstanceDetails(instanceDetails) {
 async function lobby(handleData, handleError) {
     await sodium.ready;
 
+    const instanceInfo = readInstanceInfo();
+
     const cfg = readHpCfg();
-    const userPort = cfg.user.port;
+    const port = instanceInfo?.gp_tcp_port ? parseInt(instanceInfo?.gp_tcp_port) : cfg.user.port;
     const userPubkeyHex = cfg.contract.bin_args;
     const userPubkey = sodium.from_hex(userPubkeyHex.slice(2));
 
@@ -126,8 +129,8 @@ async function lobby(handleData, handleError) {
         });
     });
 
-    server.listen(userPort, () => {
-        console.log(`WebSocket server is running on wss://localhost:${userPort}`);
+    server.listen(port, () => {
+        console.log(`WebSocket ${instanceInfo?.gp_tcp_port ? `[upgrade]` : `[prep]`} server is running on wss://localhost:${port}`);
     });
 
     process.on('SIGINT', function () {
@@ -139,13 +142,40 @@ async function main() {
     await lobby(async (data, ack, terminate) => {
         console.log('Received command :', data.type ?? 'unknown');
         switch (data.type) {
-            case 'upgrade':
+            case 'run':
                 try {
                     console.log('Writing the instance details...');
-                    writeInstanceDetails(data.data.instanceDetails);
+                    writeInstanceDetails(data.instanceDetails);
 
+                    console.log('Writing run status flag...');
+                    fs.writeFileSync(STATUS_FLAG, '0');
+
+                    ack({
+                        type: 'run',
+                        status: 'SUCCESS'
+                    });
+
+                    console.log('Terminating the connection...');
+                    terminate();
+                    process.exit(0);
+                }
+                catch (e) {
+                    console.error(e);
+                    ack({
+                        type: 'run',
+                        status: 'ERROR',
+                        data: e
+                    });
+                }
+                break;
+            case 'upgrade':
+                try {
                     console.log('Upgrading the contract...');
-                    updateHpContract(data.data.unl, data.data.peers);
+                    updateHpContract(data.unl, data.peers);
+
+                    console.log('Writing upgrade status flag...');
+                    fs.writeFileSync(STATUS_FLAG, '1');
+
                     ack({
                         type: 'upgrade',
                         status: 'SUCCESS'

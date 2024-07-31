@@ -1,6 +1,6 @@
 #!/bin/bash
 
-img=evernodedev/reputation-port
+img=evernodedev/reputation-v2
 
 tmp=$(mktemp -d)
 mkdir $tmp/contract

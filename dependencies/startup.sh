@@ -35,7 +35,7 @@
 
             echo 2 >$stat_file
 
-        elif [ "$status" == "2"]; then
+        elif [ "$status" == "2" ]; then
             /usr/bin/node /usr/local/bin/hotpocket/gp-port-server &
             other_pid=$!
 
@@ -55,10 +55,10 @@
     fi
 
     kill_processes() {
-        [ -z $other_pid ] && kill $other_pid
-        [ -z $hpcore_pid ] && kill $hpcore_pid
-        [ -z $other_pid ] && wait $other_pid
-        [ -z $hpcore_pid ] && wait $hpcore_pid
+        [ ! -z $other_pid ] && kill $other_pid
+        [ ! -z $hpcore_pid ] && kill $hpcore_pid
+        [ ! -z $other_pid ] && wait $other_pid
+        [ ! -z $hpcore_pid ] && wait $hpcore_pid
     }
 
     kill_processes

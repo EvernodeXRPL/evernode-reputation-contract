@@ -87,7 +87,7 @@ for ((i = 0; i < $ncount; i++)); do
             }, null, 2)" >./node$n/instance.json
 
     # Write the status flag to skip lobby
-    echo 1 >./node$n/status.flag
+    echo 2 >./node$n/status.flag
 
     pushd ./node$n/cfg >/dev/null 2>&1
 
@@ -151,8 +151,6 @@ for ((i = 0; i < $ncount; i++)); do
 
     let pubkey=$(jq -r '.node.public_key' hp.cfg)
     popd >/dev/null 2>&1
-
-    cp -r ./node$n/cfg ./node$n/cfg-bk
 done
 
 # Function to generate JSON array string while skiping a given index.

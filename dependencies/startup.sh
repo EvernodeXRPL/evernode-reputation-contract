@@ -35,7 +35,7 @@
 
             echo 2 >$stat_file
 
-        elif [ "$status" == "2"]
+        elif [ "$status" == "2"]; then
             /usr/bin/node /usr/local/bin/hotpocket/gp-port-server &
             other_pid=$!
 

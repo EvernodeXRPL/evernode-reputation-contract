@@ -3,6 +3,7 @@ const https = require('https');
 const fs = require('fs');
 const WebSocket = require('ws');
 const sodium = require('libsodium-wrappers');
+const uuid = require('uuid');
 
 const CONTRACT_DIR_PATH = "/contract";
 const STATUS_FLAG = `${CONTRACT_DIR_PATH}/status.flag`;
@@ -22,6 +23,15 @@ function readInstanceInfo() {
     return fs.existsSync(INSTANCE_INFO_FILE) ? JSON.parse(fs.readFileSync(INSTANCE_INFO_FILE)) : null;
 }
 
+function generateContractId(unl) {
+    const sorted = unl.sort();
+    const id = uuid.v4({
+        random: Buffer.from(sorted.length > 0 ? sorted[0] : 'edd6cf8900758cc0107194df27736b1c92afb2c006bd165b5a1c196dba2a9c2418', 'hex')
+    });
+
+    return id;
+}
+
 function updateHpContract(unl, peers) {
     const out = childProcess.execSync(`cp -r ${HP_CFG_DIR_PATH} ${HP_CFG_BK_DIR_PATH}`);
     console.log(out.toString());
@@ -32,6 +42,8 @@ function updateHpContract(unl, peers) {
 
     let cfg = readHpCfg(hpCfgBk);
 
+    const contractId = generateContractId(unl);
+
     cfg.contract.consensus = {
         ...cfg.contract.consensus,
         roundtime: 10000,
@@ -40,6 +52,7 @@ function updateHpContract(unl, peers) {
     cfg.contract.unl = unl;
     cfg.contract = {
         ...cfg.contract,
+        id: contractId,
         bin_path: "/usr/bin/node",
         bin_args: "index.js"
     }

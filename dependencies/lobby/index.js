@@ -10,6 +10,7 @@ const STATUS_FLAG = `${CONTRACT_DIR_PATH}/status.flag`;
 const INSTANCE_INFO_FILE = `${CONTRACT_DIR_PATH}/instance.json`;
 const HP_CFG_DIR_PATH = `${CONTRACT_DIR_PATH}/cfg`;
 const HP_CFG_BK_DIR_PATH = `${CONTRACT_DIR_PATH}/cfg-bk`;
+const PEER_LIST_SIZE = 20;
 
 function readHpCfg(path = null) {
     return JSON.parse(fs.readFileSync(path || `${CONTRACT_DIR_PATH}/cfg/hp.cfg`));
@@ -32,10 +33,17 @@ function generateContractId(unl) {
     return id;
 }
 
+function shuffle(array) {
+    return array
+        .map(value => ({ value, sort: (Math.random() * 1) }))
+        .sort((a, b) => a.sort - b.sort)
+        .map(({ value }) => value);
+}
+
 function updateHpContract(unl, peers) {
     const out = childProcess.execSync(`cp -r ${HP_CFG_DIR_PATH} ${HP_CFG_BK_DIR_PATH}`);
     console.log(out.toString());
-    
+
     const hpCfgBk = `${HP_CFG_BK_DIR_PATH}/hp.cfg`;
 
     console.log('Upgrading the config...');
@@ -43,11 +51,12 @@ function updateHpContract(unl, peers) {
     let cfg = readHpCfg(hpCfgBk);
 
     const contractId = generateContractId(unl);
+    const shuffledPeers = ((peers?.length ?? 0) > PEER_LIST_SIZE) ? shuffle(peers).slice(0, PEER_LIST_SIZE) : (peers ?? []);
 
     cfg.contract.consensus = {
         ...cfg.contract.consensus,
         roundtime: 10000,
-        threshold: 60
+        threshold: 51
     }
     cfg.contract.unl = unl;
     cfg.contract = {
@@ -58,11 +67,12 @@ function updateHpContract(unl, peers) {
     }
 
 
+    cfg.mesh.msg_forwarding = true;
     cfg.mesh.peer_discovery = {
         ...cfg.mesh.peer_discovery,
-        enabled: true
+        enabled: false
     }
-    cfg.mesh.known_peers = peers;
+    cfg.mesh.known_peers = shuffledPeers;
 
     writeHpCfg(cfg, hpCfgBk);
 }

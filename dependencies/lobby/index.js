@@ -156,9 +156,9 @@ async function main() {
                     console.log('Upgrading the contract...');
                     updateHpContract(data.unl, data.peers);
 
-                    console.log('Writing status flag...');
+                    console.log('Writing upgrade status flag...');
                     fs.writeFileSync(STATUS_FLAG, '1');
-                    
+
                     ack({
                         type: 'upgrade',
                         status: 'SUCCESS'

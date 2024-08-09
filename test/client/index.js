@@ -1,5 +1,6 @@
 const WebSocket = require('ws');
 const readline = require('readline');
+const sodium = require('libsodium-wrappers');
 
 let server = 'wss://localhost:8080'
 if (process.argv.length == 3) server = 'wss://localhost:' + process.argv[2]
@@ -36,21 +37,31 @@ rl.on('SIGINT', () => {
 
 console.log("Ready to accept inputs.");
 const inputPump = () => {
-    rl.question('', (inp) => {
+    rl.question('', async (inp) => {
+        await sodium.ready;
+
+        const userKey = sodium.from_hex('ed797ecd191b0364db559896c648c21cda7763db551a97577ed9ffb0ebb41881d8f9d1af6ff29af9287b0411758aac472016fb186220ef39db7959294c28857909');
 
         if (inp.length > 0) {
             if (inp === "upgrade") {
-                ws.send(JSON.stringify({
+                const message = JSON.stringify({
                     type: 'upgrade',
-                    data: {
-                        unl: [
-                            "ed41046de99622ed2699e7d18658e6f15a7353f2cbeb699515fd9a858f661209cf",
-                            "ed24132e4c21c0f8e45178574d861b0b18711926e2ce5ded3fea53c321ac0bd6be"
-                        ],
-                        peers: [
-                            "45.77.199.188:22861"
-                        ]
-                    }
+                    unl: [
+                        "ed41046de99622ed2699e7d18658e6f15a7353f2cbeb699515fd9a858f661209cf",
+                        "ed24132e4c21c0f8e45178574d861b0b18711926e2ce5ded3fea53c321ac0bd6be"
+                    ],
+                    peers: [
+                        "45.77.199.188:22861"
+                    ]
+                });
+                const messageUint8 = sodium.from_string(message);
+                const signature = sodium.crypto_sign_detached(messageUint8, userKey.slice(1));
+                const signatureHex = sodium.to_hex(signature);
+
+                console.log('Sending the message...');
+                ws.send(JSON.stringify({
+                    signature: signatureHex,
+                    message: message
                 }));
             }
         }

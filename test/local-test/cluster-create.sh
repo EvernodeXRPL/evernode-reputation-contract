@@ -86,8 +86,8 @@ for ((i = 0; i < $ncount; i++)); do
                 domain: '$iprange.${n}'
             }, null, 2)" >./node$n/instance.json
 
-    # Write the init flag to skip lobby
-    echo 1 >./node$n/init.flag
+    # Write the status flag to skip lobby
+    echo 1 >./node$n/status.flag
 
     pushd ./node$n/cfg >/dev/null 2>&1
 

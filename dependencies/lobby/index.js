@@ -1,28 +1,38 @@
-import { execSync } from 'child_process';
+const childProcess = require('child_process');
 const https = require('https');
 const fs = require('fs');
 const WebSocket = require('ws');
 const sodium = require('libsodium-wrappers');
 
-const CONTRACT_PATH = "/contract";
-const INIT_FLAG = `${CONTRACT_PATH}/init.flag`;
-const INSTANCE_INFO_FILE = `${CONTRACT_PATH}/instance.json`;
+const CONTRACT_DIR_PATH = "/contract";
+const DEPLOY_DIR_PATH = "/deploy";
+const STATUS_FLAG = `${CONTRACT_DIR_PATH}/status.flag`;
+const INSTANCE_INFO_FILE = `${CONTRACT_DIR_PATH}/instance.json`;
+const HP_CFG_DIR_PATH = `${CONTRACT_DIR_PATH}/cfg`;
+const PEER_LIST_SIZE = 20;
 
-function readHpCfg() {
-    return JSON.parse(fs.readFileSync(`${CONTRACT_PATH}/cfg/hp.cfg`));
+function readHpCfg(path = null) {
+    return JSON.parse(fs.readFileSync(path || `${HP_CFG_DIR_PATH}/hp.cfg`));
 }
 
-function writeHpCfg(cfg) {
-    fs.writeFileSync(`${CONTRACT_PATH}/cfg/hp.cfg`, JSON.stringify(cfg, null, 2));
+function writeHpCfg(cfg, path = null) {
+    fs.writeFileSync(path || `${HP_CFG_DIR_PATH}/hp.cfg`, JSON.stringify(cfg, null, 2));
+}
+
+function shuffle(array) {
+    return array
+        .map(value => ({ value, sort: (Math.random() * 1) }))
+        .sort((a, b) => a.sort - b.sort)
+        .map(({ value }) => value);
 }
 
 function updateHpContract(unl, peers) {
-    if (fs.existsSync('/deploy')) {
-        const out = execSync(`
-                rm -rf ${CONTRACT_PATH}/contract_fs/seed/state/bootstrap_contract &&
-                rm -rf ${CONTRACT_PATH}/contract_fs/seed/state/bootstrap_upgrade.sh &&
-                cp /deploy/contract/* ${CONTRACT_PATH}/contract_fs/seed/state/ &&
-                rm -rf /deploy
+    if (fs.existsSync(DEPLOY_DIR_PATH)) {
+        const out = childProcess.execSync(`
+                rm -rf ${CONTRACT_DIR_PATH}/contract_fs/seed/state/bootstrap_contract &&
+                rm -rf ${CONTRACT_DIR_PATH}/contract_fs/seed/state/bootstrap_upgrade.sh &&
+                cp ${DEPLOY_DIR_PATH}/contract/* ${CONTRACT_DIR_PATH}/contract_fs/seed/state/ &&
+                rm -rf ${DEPLOY_DIR_PATH}
                 `);
         console.log(out.toString());
     }
@@ -31,10 +41,12 @@ function updateHpContract(unl, peers) {
 
     let cfg = readHpCfg();
 
+    const shuffledPeers = ((peers?.length ?? 0) > PEER_LIST_SIZE) ? shuffle(peers).slice(0, PEER_LIST_SIZE) : (peers ?? []);
+
     cfg.contract.consensus = {
         ...cfg.contract.consensus,
         roundtime: 10000,
-        threshold: 60
+        threshold: 51
     }
     cfg.contract.unl = unl;
     cfg.contract = {
@@ -43,17 +55,17 @@ function updateHpContract(unl, peers) {
         bin_args: "index.js"
     }
 
-
+    cfg.mesh.msg_forwarding = true;
     cfg.mesh.peer_discovery = {
         ...cfg.mesh.peer_discovery,
-        enabled: true
+        enabled: false
     }
-    cfg.mesh.known_peers = peers;
+    cfg.mesh.known_peers = shuffledPeers;
 
     writeHpCfg(cfg);
 
-    console.log('Writing init flag...');
-    fs.writeFileSync(INIT_FLAG, '1');
+    console.log('Writing status flag...');
+    fs.writeFileSync(STATUS_FLAG, '1');
 }
 
 function writeInstanceDetails(instanceDetails) {
@@ -69,8 +81,8 @@ async function lobby(handleData, handleError) {
     const userPubkey = sodium.from_hex(userPubkeyHex.slice(2));
 
     const serverOptions = {
-        cert: fs.readFileSync(`${CONTRACT_PATH}/cfg/tlscert.pem`),
-        key: fs.readFileSync(`${CONTRACT_PATH}/cfg/tlskey.pem`)
+        cert: fs.readFileSync(`${HP_CFG_DIR_PATH}/tlscert.pem`),
+        key: fs.readFileSync(`${HP_CFG_DIR_PATH}/tlskey.pem`)
     };
 
     const server = https.createServer(serverOptions);

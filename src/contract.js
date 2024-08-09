@@ -388,7 +388,8 @@ const evaluateResources = async (ctx) => {
 
     ctx.unl.onMessage(async (node, data) => {
         const msg = JSON.parse(data);
-        storedMessages.push({ node, msg });
+        if (storedMessages.findIndex(o => o.node.publicKey === node.publicKey) === -1)
+            storedMessages.push({ node, msg });
     });
 
     [fileHash, pubKeyCodedHash] = await pow(ctx.lclHash, ctx.publicKey);

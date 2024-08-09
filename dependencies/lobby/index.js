@@ -63,9 +63,6 @@ function updateHpContract(unl, peers) {
     cfg.mesh.known_peers = shuffledPeers;
 
     writeHpCfg(cfg);
-
-    console.log('Writing status flag...');
-    fs.writeFileSync(STATUS_FLAG, '1');
 }
 
 function writeInstanceDetails(instanceDetails) {
@@ -154,10 +151,14 @@ async function main() {
             case 'upgrade':
                 try {
                     console.log('Writing the instance details...');
-                    writeInstanceDetails(data.data.instanceDetails);
+                    writeInstanceDetails(data.instanceDetails);
 
                     console.log('Upgrading the contract...');
-                    updateHpContract(data.data.unl, data.data.peers);
+                    updateHpContract(data.unl, data.peers);
+
+                    console.log('Writing status flag...');
+                    fs.writeFileSync(STATUS_FLAG, '1');
+                    
                     ack({
                         type: 'upgrade',
                         status: 'SUCCESS'

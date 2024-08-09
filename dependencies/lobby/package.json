@@ -11,6 +11,7 @@
   "dependencies": {
     "https": "1.0.0",
     "libsodium-wrappers": "0.7.13",
-    "ws": "8.17.0"
+    "uuid": "10.0.0",
+    "ws": "8.18.0"
   }
 }

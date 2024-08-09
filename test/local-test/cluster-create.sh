@@ -151,7 +151,6 @@ for ((i = 0; i < $ncount; i++)); do
 
     let pubkey=$(jq -r '.node.public_key' hp.cfg)
     popd >/dev/null 2>&1
-
 done
 
 # Function to generate JSON array string while skiping a given index.

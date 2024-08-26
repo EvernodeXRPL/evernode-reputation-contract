@@ -1,5 +1,5 @@
 #!/bin/bash
 
-img=evernodedev/reputation-v2
+img=evernodedev/reputation-v3
 
 docker image push --all-tags $img

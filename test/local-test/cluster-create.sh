@@ -87,7 +87,7 @@ for ((i = 0; i < $ncount; i++)); do
             }, null, 2)" >./node$n/instance.json
 
     # Write the status flag to skip lobby
-    echo 2 >./node$n/status.flag
+    echo 1 >./node$n/status.flag
 
     pushd ./node$n/cfg >/dev/null 2>&1
 

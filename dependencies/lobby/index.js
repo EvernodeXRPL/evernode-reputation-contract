@@ -3,34 +3,20 @@ const https = require('https');
 const fs = require('fs');
 const WebSocket = require('ws');
 const sodium = require('libsodium-wrappers');
-const uuid = require('uuid');
 
 const CONTRACT_DIR_PATH = "/contract";
+const DEPLOY_DIR_PATH = "/deploy";
 const STATUS_FLAG = `${CONTRACT_DIR_PATH}/status.flag`;
 const INSTANCE_INFO_FILE = `${CONTRACT_DIR_PATH}/instance.json`;
 const HP_CFG_DIR_PATH = `${CONTRACT_DIR_PATH}/cfg`;
-const HP_CFG_BK_DIR_PATH = `${CONTRACT_DIR_PATH}/cfg-bk`;
 const PEER_LIST_SIZE = 20;
 
 function readHpCfg(path = null) {
-    return JSON.parse(fs.readFileSync(path || `${CONTRACT_DIR_PATH}/cfg/hp.cfg`));
+    return JSON.parse(fs.readFileSync(path || `${HP_CFG_DIR_PATH}/hp.cfg`));
 }
 
 function writeHpCfg(cfg, path = null) {
-    fs.writeFileSync(path || `${CONTRACT_DIR_PATH}/cfg/hp.cfg`, JSON.stringify(cfg, null, 2));
-}
-
-function readInstanceInfo() {
-    return fs.existsSync(INSTANCE_INFO_FILE) ? JSON.parse(fs.readFileSync(INSTANCE_INFO_FILE)) : null;
-}
-
-function generateContractId(unl) {
-    const sorted = unl.sort();
-    const id = uuid.v4({
-        random: Buffer.from(sorted.length > 0 ? sorted[0] : 'edd6cf8900758cc0107194df27736b1c92afb2c006bd165b5a1c196dba2a9c2418', 'hex')
-    });
-
-    return id;
+    fs.writeFileSync(path || `${HP_CFG_DIR_PATH}/hp.cfg`, JSON.stringify(cfg, null, 2));
 }
 
 function shuffle(array) {
@@ -41,16 +27,20 @@ function shuffle(array) {
 }
 
 function updateHpContract(unl, peers) {
-    const out = childProcess.execSync(`cp -r ${HP_CFG_DIR_PATH} ${HP_CFG_BK_DIR_PATH}`);
-    console.log(out.toString());
-
-    const hpCfgBk = `${HP_CFG_BK_DIR_PATH}/hp.cfg`;
+    if (fs.existsSync(DEPLOY_DIR_PATH)) {
+        const out = childProcess.execSync(`
+                rm -rf ${CONTRACT_DIR_PATH}/contract_fs/seed/state/bootstrap_contract &&
+                rm -rf ${CONTRACT_DIR_PATH}/contract_fs/seed/state/bootstrap_upgrade.sh &&
+                cp ${DEPLOY_DIR_PATH}/contract/* ${CONTRACT_DIR_PATH}/contract_fs/seed/state/ &&
+                rm -rf ${DEPLOY_DIR_PATH}
+                `);
+        console.log(out.toString());
+    }
 
     console.log('Upgrading the config...');
 
-    let cfg = readHpCfg(hpCfgBk);
+    let cfg = readHpCfg();
 
-    const contractId = generateContractId(unl);
     const shuffledPeers = ((peers?.length ?? 0) > PEER_LIST_SIZE) ? shuffle(peers).slice(0, PEER_LIST_SIZE) : (peers ?? []);
 
     cfg.contract.consensus = {
@@ -61,11 +51,9 @@ function updateHpContract(unl, peers) {
     cfg.contract.unl = unl;
     cfg.contract = {
         ...cfg.contract,
-        id: contractId,
         bin_path: "/usr/bin/node",
         bin_args: "index.js"
     }
-
 
     cfg.mesh.msg_forwarding = true;
     cfg.mesh.peer_discovery = {
@@ -74,7 +62,7 @@ function updateHpContract(unl, peers) {
     }
     cfg.mesh.known_peers = shuffledPeers;
 
-    writeHpCfg(cfg, hpCfgBk);
+    writeHpCfg(cfg);
 }
 
 function writeInstanceDetails(instanceDetails) {
@@ -84,16 +72,14 @@ function writeInstanceDetails(instanceDetails) {
 async function lobby(handleData, handleError) {
     await sodium.ready;
 
-    const instanceInfo = readInstanceInfo();
-
     const cfg = readHpCfg();
-    const port = instanceInfo?.gp_tcp_port ? parseInt(instanceInfo?.gp_tcp_port) : cfg.user.port;
+    const userPort = cfg.user.port;
     const userPubkeyHex = cfg.contract.bin_args;
     const userPubkey = sodium.from_hex(userPubkeyHex.slice(2));
 
     const serverOptions = {
-        cert: fs.readFileSync(`${CONTRACT_DIR_PATH}/cfg/tlscert.pem`),
-        key: fs.readFileSync(`${CONTRACT_DIR_PATH}/cfg/tlskey.pem`)
+        cert: fs.readFileSync(`${HP_CFG_DIR_PATH}/tlscert.pem`),
+        key: fs.readFileSync(`${HP_CFG_DIR_PATH}/tlskey.pem`)
     };
 
     const server = https.createServer(serverOptions);
@@ -149,8 +135,8 @@ async function lobby(handleData, handleError) {
         });
     });
 
-    server.listen(port, () => {
-        console.log(`WebSocket ${instanceInfo?.gp_tcp_port ? `[upgrade]` : `[prep]`} server is running on wss://localhost:${port}`);
+    server.listen(userPort, () => {
+        console.log(`WebSocket server is running on wss://localhost:${userPort}`);
     });
 
     process.on('SIGINT', function () {
@@ -162,34 +148,11 @@ async function main() {
     await lobby(async (data, ack, terminate) => {
         console.log('Received command :', data.type ?? 'unknown');
         switch (data.type) {
-            case 'run':
+            case 'upgrade':
                 try {
                     console.log('Writing the instance details...');
                     writeInstanceDetails(data.instanceDetails);
 
-                    console.log('Writing run status flag...');
-                    fs.writeFileSync(STATUS_FLAG, '0');
-
-                    ack({
-                        type: 'run',
-                        status: 'SUCCESS'
-                    });
-
-                    console.log('Terminating the connection...');
-                    terminate();
-                    process.exit(0);
-                }
-                catch (e) {
-                    console.error(e);
-                    ack({
-                        type: 'run',
-                        status: 'ERROR',
-                        data: e
-                    });
-                }
-                break;
-            case 'upgrade':
-                try {
                     console.log('Upgrading the contract...');
                     updateHpContract(data.unl, data.peers);
 

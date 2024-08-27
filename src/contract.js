@@ -15,7 +15,7 @@ const PORT_OPT_FILE = "../port_opinion.json";
 const EXEC_INFO_FILE = "../exec_info.json";
 const FILE_PATH = '../rep_hash.dat';
 const PORT_EVAL_UNL_SHUFFLE_FILE = './port_eval_unl_shuffle.json';
-const TOTAL_FILE_SIZE = Math.floor(1.5 * 1024 * 1024 * 1024);
+const TOTAL_FILE_SIZE = Math.floor(0.5 * 1024 * 1024 * 1024);
 const WRITE_INTERVAL = 1 * 512 * 1024;
 const CHUNK_SIZE = 1024 * 1024;
 const PORT_EVAL_LEDGER_INTERVAL = 5;
@@ -28,7 +28,7 @@ const RESOURCE_SCORE_WEIGHT = 0.75;
 const NUM_HASHES = TOTAL_FILE_SIZE / WRITE_INTERVAL;
 
 const SODIUM_FREQUENCY = 200;
-const PWHASH_MEM_LIMIT = 512 * 1024 * 1024;
+const PWHASH_MEM_LIMIT = 300 * 1024 * 1024;
 
 const OPINION_WRITE_WAIT = 90000;
 
@@ -387,9 +387,10 @@ const evaluateResources = async (ctx) => {
     let storedMessages = [];
 
     ctx.unl.onMessage(async (node, data) => {
-        const msg = JSON.parse(data);
-        if (storedMessages.findIndex(o => o.node.publicKey === node.publicKey) === -1)
+        if (storedMessages.findIndex(o => o.node.publicKey === node.publicKey) === -1) {
+            const msg = JSON.parse(data);
             storedMessages.push({ node, msg });
+        }
     });
 
     [fileHash, pubKeyCodedHash] = await pow(ctx.lclHash, ctx.publicKey);

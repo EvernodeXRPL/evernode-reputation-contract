@@ -66,7 +66,7 @@ for ((i = 0; i < $ncount; i++)); do
     sudo chown -R $(whoami):$(whoami) ./node${n}/contract
     mv node${n}/contract/* node${n}/
 
-    cp ../../../dist/* node${n}/contract_fs/seed/state
+    cp -r ../../../dist/* node${n}/contract_fs/seed/state
 
     # Use NodeJs to manipulate HP json configuration.
 

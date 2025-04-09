@@ -45,7 +45,7 @@ function updateHpContract(unl, peers) {
 
     cfg.contract.consensus = {
         ...cfg.contract.consensus,
-        roundtime: 10000,
+        roundtime: 20000,
         threshold: 51
     }
     cfg.contract.unl = unl;

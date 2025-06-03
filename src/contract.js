@@ -30,7 +30,18 @@ const NUM_HASHES = TOTAL_FILE_SIZE / WRITE_INTERVAL;
 const SODIUM_FREQUENCY = 200;
 const PWHASH_MEM_LIMIT = 300 * 1024 * 1024;
 
-const OPINION_WRITE_WAIT = 55000;
+const OPINION_WRITE_WAIT = 30000;
+
+const formatTimestamp = () => {
+    return new Date().toLocaleTimeString('en-GB');
+};
+
+['log', 'error', 'warn', 'info', 'debug'].forEach((method) => {
+    const original = console[method];
+    console[method] = (...args) => {
+        original(`[${formatTimestamp()}]`, ...args);
+    };
+});
 
 function getShaHash(input) {
     let buf = Buffer.from(input, "hex");
@@ -399,6 +410,8 @@ const evaluateResources = async (ctx) => {
 
     const endTime = Date.now();
 
+    console.log(`Waiting for opinions from other nodes.`);
+
     await new Promise((resolve) => {
         setTimeout(() => {
             try {
@@ -434,6 +447,8 @@ const evaluateResources = async (ctx) => {
             }
         }, (OPINION_WRITE_WAIT - (endTime - startTime)));
     });
+
+    console.log(`Resource evaluation completed.`);
 }
 
 const getPortEvalSubUniverse = (ctx) => {

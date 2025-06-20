@@ -30,7 +30,7 @@ const NUM_HASHES = TOTAL_FILE_SIZE / WRITE_INTERVAL;
 const SODIUM_FREQUENCY = 200;
 const PWHASH_MEM_LIMIT = 300 * 1024 * 1024;
 
-const OPINION_WRITE_WAIT = 30000;
+const OPINION_WRITE_WAIT = 44000;
 
 const formatTimestamp = () => {
     return new Date().toLocaleTimeString('en-GB');

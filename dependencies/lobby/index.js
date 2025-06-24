@@ -9,7 +9,7 @@ const DEPLOY_DIR_PATH = "/deploy";
 const STATUS_FLAG = `${CONTRACT_DIR_PATH}/status.flag`;
 const INSTANCE_INFO_FILE = `${CONTRACT_DIR_PATH}/instance.json`;
 const HP_CFG_DIR_PATH = `${CONTRACT_DIR_PATH}/cfg`;
-const PEER_LIST_SIZE = 20;
+const PEER_LIST_SIZE = 10;
 
 function readHpCfg(path = null) {
     return JSON.parse(fs.readFileSync(path || `${HP_CFG_DIR_PATH}/hp.cfg`));
